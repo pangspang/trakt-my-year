@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trakt My Year</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #17202a; background: #f3f6f8; }
+    body { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
+    h1 { margin-bottom: 8px; }
+    p { color: #52606d; }
+    nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0; }
+    a, button { border: 1px solid #b8c4ce; border-radius: 6px; background: #fff; color: #145374; cursor: pointer; padding: 10px 14px; text-decoration: none; font: inherit; }
+    a:hover, button:hover { border-color: #145374; background: #eaf5fa; }
+    button { background: #145374; color: #fff; border-color: #145374; }
+    button:hover { background: #0e4059; }
+    #results { display: grid; gap: 16px; }
+    article { background: #fff; border: 1px solid #d9e1e7; border-radius: 6px; overflow: hidden; }
+    article h2 { font-size: 1rem; margin: 0; padding: 12px 16px; background: #e7eef2; }
+    pre { margin: 0; padding: 16px; min-height: 40px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+    .connected { color: #17633a; font-weight: 600; }
+    .error { color: #a33a2b; }
+  </style>
+</head>
+<body>
+  <h1>Trakt My Year</h1>
+  <p>Choose an endpoint to see its response. You are currently <span id="connection" class="connected">checking your connection...</span></p>
+
+  <nav aria-label="API requests">
+    <a href="/api/v1/auth/trakt/login">Log in with Trakt</a>
+    <a href="/api/v1/auth/status" data-request>Auth status</a>
+    <a href="/api/v1/year-reviews/2026" data-request>2026 overview</a>
+    <a href="/api/v1/year-reviews/2026/movies?sort=rating&direction=desc&page=1&pageSize=10" data-request>2026 movies</a>
+    <a href="/api/v1/year-reviews/2026/shows?sort=watchedAt&direction=desc&page=1&pageSize=10" data-request>2026 shows</a>
+    <button type="button" data-request="/api/v1/year-reviews/2026/refresh" data-method="POST">Refresh 2026</button>
+    <button type="button" id="disconnect">Disconnect</button>
+  </nav>
+
+  <section id="results" aria-live="polite"></section>
+
+  <script>
+    const results = document.querySelector('#results');
+    const connection = document.querySelector('#connection');
+
+    function showResult(label, response, body) {
+      const article = document.createElement('article');
+      const heading = document.createElement('h2');
+      heading.textContent = `${label} (${response.status})`;
+      const pre = document.createElement('pre');
+      pre.textContent = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
+      article.append(heading, pre);
+      results.prepend(article);
+    }
+
+    async function request(url, method = 'GET', label = url) {
+      try {
+        const response = await fetch(url, { method, headers: { Accept: 'application/json' } });
+        const text = await response.text();
+        let body;
+        try { body = text ? JSON.parse(text) : ''; } catch { body = text; }
+        showResult(`${method} ${label}`, response, body);
+        return { response, body };
+      } catch (error) {
+        showResult(`${method} ${label}`, { status: 'network error' }, error.message);
+      }
+    }
+
+    document.querySelectorAll('[data-request]').forEach(element => {
+      element.addEventListener('click', event => {
+        if (element.tagName === 'A') event.preventDefault();
+        const url = element.dataset.request || element.getAttribute('href');
+        request(url, element.dataset.method || 'GET', url);
+      });
+    });
+
+    document.querySelector('#disconnect').addEventListener('click', () => request('/api/v1/auth/trakt', 'DELETE', '/api/v1/auth/trakt'));
+
+    request('/api/v1/auth/status', 'GET', '/api/v1/auth/status').then(result => {
+      if (!result) return;
+      const connected = result.body && result.body.connected;
+      connection.textContent = connected ? 'connected' : 'not connected';
+      connection.className = connected ? 'connected' : 'error';
+    });
+  </script>
+</body>
+</html>

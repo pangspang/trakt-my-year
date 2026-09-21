@@ -47,7 +47,7 @@ public sealed class AuthController(
             await authenticationService.CompleteAuthorizationAsync(
                 new TraktAuthorizationCallback(code, state),
                 cancellationToken);
-            return Ok(new { connected = true });
+            return Redirect("/");
         }
         catch (InvalidOperationException exception)
         {

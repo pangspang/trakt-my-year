@@ -9,7 +9,9 @@ The first slice is a .NET 10 Web API that implements the local Trakt OAuth flow.
 	the local Trakt login endpoint in the default browser automatically.
 3. If the browser does not open, visit `http://localhost:5000/api/v1/auth/trakt/login` manually.
 4. Approve access in Trakt. Trakt redirects to the configured callback URL.
-5. Check `GET http://localhost:5000/api/v1/auth/status` or use the checked-in `.http` requests.
+5. After a successful login, the browser lands on a local page with links for the auth status,
+   year review, movie, show, refresh, and disconnect endpoints. Each request response is shown on
+   the page. The checked-in `.http` requests remain available for API-only use.
 
 The callback URL registered in Trakt must exactly match `TRAKT_CALLBACK_URL`. Slice 1 stores the
 token only in memory, so restarting the API requires connecting the account again. The access and
