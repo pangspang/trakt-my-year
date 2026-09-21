@@ -1,0 +1,35 @@
+@TraktMyYear.Api_HostAddress = http://localhost:5000
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/auth/status
+Accept: application/json
+
+###
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/auth/trakt/login
+
+###
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/auth/trakt/callback?code=example&state=example
+
+###
+
+DELETE {{TraktMyYear.Api_HostAddress}}/api/v1/auth/trakt
+
+###
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026
+Accept: application/json
+
+###
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/movies?sort=rating&direction=desc&page=1&pageSize=10
+Accept: application/json
+
+###
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/shows?sort=watchedAt&direction=desc&page=1&pageSize=10
+Accept: application/json
+
+###
+
+POST {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/refresh
