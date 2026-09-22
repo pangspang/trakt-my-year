@@ -77,6 +77,14 @@ public sealed record YearReviewOverview(
     int WatchedTitleCount,
     int RatedTitleCount);
 
+public sealed record TopYearReview(
+    int Year,
+    DateTimeOffset GeneratedAt,
+    MediaType MediaType,
+    int Limit,
+    decimal? MinimumRating,
+    IReadOnlyList<YearReviewItem> Items);
+
 public interface ITraktGateway
 {
     Task<IReadOnlyList<TraktWatchedTitle>> GetWatchedAsync(
@@ -124,6 +132,18 @@ public interface IYearReviewService
         int page,
         int pageSize,
         CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<YearReviewItem>> GetAllTitlesAsync(
+        int year,
+        MediaType mediaType,
+        YearReviewSort sort,
+        SortDirection direction,
+        CancellationToken cancellationToken = default);
+    Task<TopYearReview> GetTopTitlesAsync(
+        int year,
+        MediaType mediaType,
+        int limit,
+        decimal? minimumRating,
+        CancellationToken cancellationToken = default);
     Task RefreshAsync(int year, CancellationToken cancellationToken = default);
 }
 
@@ -164,23 +184,7 @@ public sealed class YearReviewService(
         }
 
         var snapshot = await GetSnapshotAsync(year, cancellationToken);
-        var items = snapshot.Items.Where(item => item.MediaType == mediaType);
-        items = sort switch
-        {
-            YearReviewSort.Title => direction == SortDirection.Asc
-                ? items.OrderBy(item => item.Title).ThenBy(item => item.TraktId)
-                : items.OrderByDescending(item => item.Title).ThenByDescending(item => item.TraktId),
-            YearReviewSort.Rating => direction == SortDirection.Asc
-                ? items.OrderBy(item => item.PersonalRating ?? item.TraktRating ?? decimal.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId)
-                : items.OrderByDescending(item => item.PersonalRating ?? item.TraktRating ?? decimal.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId),
-            YearReviewSort.WatchedAt => direction == SortDirection.Asc
-                ? items.OrderBy(item => item.WatchedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId)
-                : items.OrderByDescending(item => item.WatchedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId),
-            YearReviewSort.RatedAt => direction == SortDirection.Asc
-                ? items.OrderBy(item => item.RatedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId)
-                : items.OrderByDescending(item => item.RatedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId),
-            _ => throw new ArgumentOutOfRangeException(nameof(sort))
-        };
+        var items = SortItems(snapshot.Items.Where(item => item.MediaType == mediaType), sort, direction);
 
         var materialized = items.ToArray();
         return new PagedYearReview(
@@ -191,6 +195,63 @@ public sealed class YearReviewService(
             pageSize,
             materialized.Skip((page - 1) * pageSize).Take(pageSize).ToArray());
     }
+
+    public async Task<IReadOnlyList<YearReviewItem>> GetAllTitlesAsync(
+        int year,
+        MediaType mediaType,
+        YearReviewSort sort,
+        SortDirection direction,
+        CancellationToken cancellationToken = default)
+    {
+        var snapshot = await GetSnapshotAsync(year, cancellationToken);
+        return SortItems(snapshot.Items.Where(item => item.MediaType == mediaType), sort, direction).ToArray();
+    }
+
+    public async Task<TopYearReview> GetTopTitlesAsync(
+        int year,
+        MediaType mediaType,
+        int limit,
+        decimal? minimumRating,
+        CancellationToken cancellationToken = default)
+    {
+        if (limit is < 1 or > 100 || minimumRating is < 0 or > 10)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 100 and minimumRating must be between 0 and 10.");
+        }
+
+        var snapshot = await GetSnapshotAsync(year, cancellationToken);
+        var items = snapshot.Items
+            .Where(item => item.MediaType == mediaType)
+            .Where(item => !minimumRating.HasValue || (item.PersonalRating ?? item.TraktRating) >= minimumRating)
+            .OrderByDescending(item => item.PersonalRating ?? item.TraktRating ?? decimal.MinValue)
+            .ThenByDescending(item => item.WatchCount)
+            .ThenBy(item => item.Title)
+            .ThenBy(item => item.TraktId)
+            .Take(limit)
+            .ToArray();
+
+        return new TopYearReview(year, snapshot.GeneratedAt, mediaType, limit, minimumRating, items);
+    }
+
+    private static IOrderedEnumerable<YearReviewItem> SortItems(
+        IEnumerable<YearReviewItem> items,
+        YearReviewSort sort,
+        SortDirection direction) => sort switch
+    {
+        YearReviewSort.Title => direction == SortDirection.Asc
+            ? items.OrderBy(item => item.Title).ThenBy(item => item.TraktId)
+            : items.OrderByDescending(item => item.Title).ThenByDescending(item => item.TraktId),
+        YearReviewSort.Rating => direction == SortDirection.Asc
+            ? items.OrderBy(item => item.PersonalRating ?? item.TraktRating ?? decimal.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId)
+            : items.OrderByDescending(item => item.PersonalRating ?? item.TraktRating ?? decimal.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId),
+        YearReviewSort.WatchedAt => direction == SortDirection.Asc
+            ? items.OrderBy(item => item.WatchedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId)
+            : items.OrderByDescending(item => item.WatchedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId),
+        YearReviewSort.RatedAt => direction == SortDirection.Asc
+            ? items.OrderBy(item => item.RatedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId)
+            : items.OrderByDescending(item => item.RatedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId),
+        _ => throw new ArgumentOutOfRangeException(nameof(sort))
+    };
 
     public async Task RefreshAsync(int year, CancellationToken cancellationToken = default)
     {

@@ -32,4 +32,19 @@ Accept: application/json
 
 ###
 
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/movie/top?limit=10&minimumRating=8
+Accept: application/json
+
+###
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/show/top?limit=10
+Accept: application/json
+
+###
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/movie/export.csv?sort=rating&direction=desc
+Accept: text/csv
+
+###
+
 POST {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/refresh

@@ -5,82 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Trakt My Year</title>
   <style>
-    :root { color-scheme: light; font-family: system-ui, sans-serif; color: #17202a; background: #f3f6f8; }
-    body { max-width: 960px; margin: 0 auto; padding: 32px 20px; }
-    h1 { margin-bottom: 8px; }
-    p { color: #52606d; }
-    nav { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0; }
-    a, button { border: 1px solid #b8c4ce; border-radius: 6px; background: #fff; color: #145374; cursor: pointer; padding: 10px 14px; text-decoration: none; font: inherit; }
-    a:hover, button:hover { border-color: #145374; background: #eaf5fa; }
-    button { background: #145374; color: #fff; border-color: #145374; }
-    button:hover { background: #0e4059; }
-    #results { display: grid; gap: 16px; }
-    article { background: #fff; border: 1px solid #d9e1e7; border-radius: 6px; overflow: hidden; }
-    article h2 { font-size: 1rem; margin: 0; padding: 12px 16px; background: #e7eef2; }
-    pre { margin: 0; padding: 16px; min-height: 40px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
-    .connected { color: #17633a; font-weight: 600; }
-    .error { color: #a33a2b; }
+    :root { color-scheme: light; --ink: #203039; --muted: #66777b; --paper: #f4f0e8; --card: #fffdf8; --line: #d8d0c2; --teal: #176b68; --coral: #d7654d; font-family: Georgia, serif; }
+    * { box-sizing: border-box; } body { margin: 0; color: var(--ink); background: radial-gradient(circle at top right, #d9e6df 0, transparent 32rem), var(--paper); }
+    main { max-width: 1180px; margin: auto; padding: 36px 22px 70px; } header { display: flex; justify-content: space-between; gap: 24px; align-items: end; border-bottom: 1px solid var(--line); padding-bottom: 28px; }
+    h1 { font-size: clamp(2.4rem, 7vw, 5.8rem); line-height: .9; margin: 0; max-width: 650px; letter-spacing: 0; } h2, h3 { margin: 0; } .kicker { color: var(--coral); text-transform: uppercase; letter-spacing: .14em; font: 700 .75rem Verdana, sans-serif; } .lede { color: var(--muted); max-width: 430px; line-height: 1.5; }
+    .controls, .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; } .controls { margin: 28px 0; } label { font: 700 .75rem Verdana, sans-serif; text-transform: uppercase; color: var(--muted); } input, select, button, a { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 10px 13px; text-decoration: none; } input { width: 100px; } button, a.action { cursor: pointer; background: var(--teal); border-color: var(--teal); color: white; } button.secondary, a.secondary { background: transparent; color: var(--teal); }
+    .status { margin-left: auto; font: .8rem Verdana, sans-serif; color: var(--muted); } .status.connected { color: var(--teal); } .status.error { color: var(--coral); }
+    .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 36px; } .metric, .panel { background: var(--card); border: 1px solid var(--line); } .metric { padding: 20px; } .metric strong { display: block; font-size: 2.4rem; font-weight: 400; } .metric span { color: var(--muted); font: .72rem Verdana, sans-serif; text-transform: uppercase; }
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; } .panel { padding: 22px; } .panel h2 { font-size: 1.5rem; margin-bottom: 18px; } .panel-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 18px; } .panel-heading select { padding: 7px; }
+    table { border-collapse: collapse; width: 100%; font-family: Verdana, sans-serif; font-size: .78rem; } th, td { text-align: left; border-top: 1px solid var(--line); padding: 10px 5px; } th { color: var(--muted); font-size: .65rem; text-transform: uppercase; } .rating { color: var(--coral); font-weight: bold; } .empty { color: var(--muted); padding: 15px 0; } .error-box { color: var(--coral); min-height: 24px; margin: 14px 0; font-family: Verdana, sans-serif; font-size: .8rem; }
+    @media (max-width: 760px) { header { display: block; } .status { display: block; margin-top: 20px; } .metrics { grid-template-columns: repeat(2, 1fr); } .layout { grid-template-columns: 1fr; } main { padding-top: 24px; } }
   </style>
 </head>
 <body>
-  <h1>Trakt My Year</h1>
-  <p>Choose an endpoint to see its response. You are currently <span id="connection" class="connected">checking your connection...</span></p>
-
-  <nav aria-label="API requests">
-    <a href="/api/v1/auth/trakt/login">Log in with Trakt</a>
-    <a href="/api/v1/auth/status" data-request>Auth status</a>
-    <a href="/api/v1/year-reviews/2026" data-request>2026 overview</a>
-    <a href="/api/v1/year-reviews/2026/movies?sort=rating&direction=desc&page=1&pageSize=10" data-request>2026 movies</a>
-    <a href="/api/v1/year-reviews/2026/shows?sort=watchedAt&direction=desc&page=1&pageSize=10" data-request>2026 shows</a>
-    <button type="button" data-request="/api/v1/year-reviews/2026/refresh" data-method="POST">Refresh 2026</button>
-    <button type="button" id="disconnect">Disconnect</button>
-  </nav>
-
-  <section id="results" aria-live="polite"></section>
-
+  <main>
+    <header><div><div class="kicker">Your year in Trakt</div><h1 id="title">A year, watched.</h1></div><div><p class="lede">A clear view of the films and shows that shaped the year.</p><div id="connection" class="status">Checking Trakt connection...</div></div></header>
+    <div class="controls"><label for="year">Calendar year</label><input id="year" type="number" min="1900" max="2100" value="2026"><button id="load">Load year</button><button id="refresh" class="secondary">Refresh data</button><a class="secondary" href="/api/v1/auth/trakt/login">Connect Trakt</a><button id="disconnect" class="secondary">Disconnect</button></div>
+    <div id="error" class="error-box" role="alert"></div>
+    <section class="metrics" aria-label="Year overview"><div class="metric"><strong id="movieCount">-</strong><span>Movies</span></div><div class="metric"><strong id="showCount">-</strong><span>Shows</span></div><div class="metric"><strong id="watchedCount">-</strong><span>Watched titles</span></div><div class="metric"><strong id="ratedCount">-</strong><span>Rated titles</span></div></section>
+    <section class="layout"><article class="panel"><div class="panel-heading"><h2>Movies</h2><select id="movieSort" aria-label="Movie sort"><option value="title,asc">Title A-Z</option><option value="rating,desc">Rating</option><option value="watchedAt,desc">Recently watched</option><option value="ratedAt,desc">Recently rated</option></select></div><div id="movies"></div><div class="actions"><a id="movieCsv" class="secondary" download>Download CSV</a><a id="movieTop" class="secondary">Top rated</a></div></article><article class="panel"><div class="panel-heading"><h2>Shows</h2><select id="showSort" aria-label="Show sort"><option value="title,asc">Title A-Z</option><option value="rating,desc">Rating</option><option value="watchedAt,desc">Recently watched</option><option value="ratedAt,desc">Recently rated</option></select></div><div id="shows"></div><div class="actions"><a id="showCsv" class="secondary" download>Download CSV</a><a id="showTop" class="secondary">Top rated</a></div></article></section>
+  </main>
   <script>
-    const results = document.querySelector('#results');
-    const connection = document.querySelector('#connection');
-
-    function showResult(label, response, body) {
-      const article = document.createElement('article');
-      const heading = document.createElement('h2');
-      heading.textContent = `${label} (${response.status})`;
-      const pre = document.createElement('pre');
-      pre.textContent = typeof body === 'string' ? body : JSON.stringify(body, null, 2);
-      article.append(heading, pre);
-      results.prepend(article);
-    }
-
-    async function request(url, method = 'GET', label = url) {
-      try {
-        const response = await fetch(url, { method, headers: { Accept: 'application/json' } });
-        const text = await response.text();
-        let body;
-        try { body = text ? JSON.parse(text) : ''; } catch { body = text; }
-        showResult(`${method} ${label}`, response, body);
-        return { response, body };
-      } catch (error) {
-        showResult(`${method} ${label}`, { status: 'network error' }, error.message);
-      }
-    }
-
-    document.querySelectorAll('[data-request]').forEach(element => {
-      element.addEventListener('click', event => {
-        if (element.tagName === 'A') event.preventDefault();
-        const url = element.dataset.request || element.getAttribute('href');
-        request(url, element.dataset.method || 'GET', url);
-      });
-    });
-
-    document.querySelector('#disconnect').addEventListener('click', () => request('/api/v1/auth/trakt', 'DELETE', '/api/v1/auth/trakt'));
-
-    request('/api/v1/auth/status', 'GET', '/api/v1/auth/status').then(result => {
-      if (!result) return;
-      const connected = result.body && result.body.connected;
-      connection.textContent = connected ? 'connected' : 'not connected';
-      connection.className = connected ? 'connected' : 'error';
-    });
+    const $ = selector => document.querySelector(selector), year = $('#year'), error = $('#error');
+    const api = (path, options = {}) => fetch(path, { headers: { Accept: 'application/json' }, ...options }).then(async response => { const body = await response.text(); if (!response.ok) { let detail = body; try { detail = JSON.parse(body).detail || detail; } catch {} throw new Error(detail || `Request failed (${response.status})`); } return body ? JSON.parse(body) : null; });
+    const query = (type, selector) => { const [sort, direction] = $(selector).value.split(','); return `sort=${sort}&direction=${direction}`; };
+    function renderTable(target, items) { if (!items.length) { $(target).innerHTML = '<div class="empty">No titles in this collection.</div>'; return; } $(target).innerHTML = `<table><thead><tr><th>Title</th><th>Rating</th><th>Watched</th></tr></thead><tbody>${items.map(item => `<tr><td>${escapeHtml(item.title)}</td><td class="rating">${item.personalRating ?? item.traktRating ?? '-'}</td><td>${item.watchedAt ? new Date(item.watchedAt).toLocaleDateString() : '-'}</td></tr>`).join('')}</tbody></table>`; }
+    function escapeHtml(value) { const node = document.createElement('span'); node.textContent = value; return node.innerHTML; }
+    async function load() { const selectedYear = year.value; error.textContent = ''; $('#title').textContent = `${selectedYear}, watched.`; try { const overview = await api(`/api/v1/year-reviews/${selectedYear}`); $('#movieCount').textContent = overview.movieCount; $('#showCount').textContent = overview.showCount; $('#watchedCount').textContent = overview.watchedTitleCount; $('#ratedCount').textContent = overview.ratedTitleCount; await Promise.all([loadTitles('movies', 'movie', '#movieSort'), loadTitles('shows', 'show', '#showSort')]); } catch (exception) { error.textContent = exception.message; } }
+    async function loadTitles(target, type, selector) { const params = query(type, selector); const result = await api(`/api/v1/year-reviews/${year.value}/${type}s?page=1&pageSize=100&${params}`); renderTable(`#${target}`, result.items); $(`#${type}Csv`).href = `/api/v1/year-reviews/${year.value}/${type}/export.csv?${params}`; $(`#${type}Top`).href = `/api/v1/year-reviews/${year.value}/${type}/top?limit=10`; }
+    $('#load').addEventListener('click', load); $('#refresh').addEventListener('click', async () => { try { error.textContent = ''; await api(`/api/v1/year-reviews/${year.value}/refresh`, { method: 'POST' }); await load(); } catch (exception) { error.textContent = exception.message; } }); $('#movieSort').addEventListener('change', load); $('#showSort').addEventListener('change', load); $('#disconnect').addEventListener('click', async () => { await api('/api/v1/auth/trakt', { method: 'DELETE' }); checkConnection(); });
+    async function checkConnection() { try { const status = await api('/api/v1/auth/status'); $('#connection').textContent = status.connected ? 'Trakt connected' : 'Trakt not connected'; $('#connection').className = `status ${status.connected ? 'connected' : 'error'}`; } catch (exception) { $('#connection').textContent = exception.message; $('#connection').className = 'status error'; } }
+    checkConnection(); load();
   </script>
 </body>
 </html>

@@ -74,6 +74,31 @@ public sealed class YearReviewServiceTests
         Assert.Equal(1, gateway.ShowRatingCalls);
     }
 
+    [Fact]
+    public async Task TopTitlesApplyMinimumRatingAndDeterministicTieBreakers()
+    {
+        var gateway = new FakeGateway
+        {
+            Movies =
+            [
+                Watched(MediaType.Movie, 1, "Popular Tie", "2026-01-01T10:00:00Z", 1),
+                Watched(MediaType.Movie, 2, "Frequent Tie", "2026-01-02T10:00:00Z", 3),
+                Watched(MediaType.Movie, 3, "Too Low", "2026-01-03T10:00:00Z", 5)
+            ],
+            RatedMovies =
+            [
+                Rated(MediaType.Movie, 1, "Popular Tie", "2026-01-04T10:00:00Z", 8),
+                Rated(MediaType.Movie, 2, "Frequent Tie", "2026-01-05T10:00:00Z", 8),
+                Rated(MediaType.Movie, 3, "Too Low", "2026-01-06T10:00:00Z", 7)
+            ]
+        };
+        var service = new YearReviewService(gateway, new MemoryStore(), new UtcYearBoundaryProvider());
+
+        var result = await service.GetTopTitlesAsync(2026, MediaType.Movie, 10, 8);
+
+        Assert.Equal(["Frequent Tie", "Popular Tie"], result.Items.Select(item => item.Title));
+    }
+
     private static TraktWatchedTitle Watched(MediaType mediaType, int id, string title, string watchedAt, int plays) =>
         new(mediaType, id, title, 2026, DateTimeOffset.Parse(watchedAt), plays, null);
 

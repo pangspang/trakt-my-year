@@ -32,3 +32,16 @@ The first request imports watched history and ratings into an in-memory year sna
 requests reuse that snapshot for 30 minutes, with a 10-minute sliding expiration. A refresh rebuilds
 the selected year. Show history is represented as title-level records; episode records are never
 returned by the API. The configured `TRAKT_TIMEZONE` controls the calendar-year boundary.
+
+## Slice 3: presentation exports and top lists
+
+The API supports repeatable presentation inputs without manual cleanup:
+
+- `GET /api/v1/year-reviews/2026/movie/top?limit=10&minimumRating=8`
+- `GET /api/v1/year-reviews/2026/show/top?limit=10`
+- `GET /api/v1/year-reviews/2026/movie/export.csv?sort=rating&direction=desc`
+
+Top lists use personal rating when present, then Trakt rating, watch count, title, and Trakt ID
+as deterministic tie-breakers. `limit` is 1-100 and `minimumRating` is 0-10. CSV exports contain
+the complete cached collection for the selected media type. The browser page provides the same
+operations with year selection, sortable tables, top lists, refresh, and downloads.
