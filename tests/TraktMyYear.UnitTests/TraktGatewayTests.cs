@@ -15,7 +15,7 @@ public sealed class TraktGatewayTests
             new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = new StringContent(
-                    "[{\"last_watched_at\":\"2026-01-02T10:00:00Z\",\"plays\":1,\"show\":{\"title\":\"Example Show\",\"year\":2026,\"rating\":8.4,\"ids\":{\"trakt\":42}}}]",
+                    "[{\"last_watched_at\":\"2026-01-02T10:00:00Z\",\"plays\":1,\"show\":{\"title\":\"Example Show\",\"year\":2026,\"images\":{\"poster\":[\"https://images.example/poster.jpg\"]},\"ids\":{\"trakt\":42,\"slug\":\"example-show\"}}}]",
                     Encoding.UTF8,
                     "application/json")
             });
@@ -32,7 +32,10 @@ public sealed class TraktGatewayTests
 
         Assert.Single(result);
         Assert.Null(handler.AuthorizationHeaders[0]);
-        Assert.Contains("/users/pangspang/watched/shows?extended=min&page=1&limit=100", handler.RequestUris[0]);
+        Assert.Equal("https://images.example/poster.jpg", result[0].PosterUrl);
+        Assert.Equal("https://trakt.tv/shows/example-show", result[0].TraktUrl);
+        Assert.Equal(new DateTimeOffset(2026, 1, 2, 10, 0, 0, TimeSpan.Zero), result[0].WatchedAt);
+        Assert.Contains("/users/pangspang/watched/shows?extended=full&page=1&limit=100", handler.RequestUris[0]);
     }
 
     [Fact]
@@ -67,7 +70,7 @@ public sealed class TraktGatewayTests
         Assert.Equal(1, oauth.RefreshCalls);
         var refreshedHeader = Assert.IsType<AuthenticationHeaderValue>(handler.AuthorizationHeaders[1]);
         Assert.Equal("refreshed", refreshedHeader.Parameter);
-        Assert.Contains("/users/me/watched/shows?extended=min&page=1&limit=100", handler.RequestUris[0]);
+        Assert.Contains("/users/me/watched/shows?extended=full&page=1&limit=100", handler.RequestUris[0]);
     }
 
     [Fact]
@@ -94,7 +97,7 @@ public sealed class TraktGatewayTests
 
         var movie = Assert.Single(result);
         Assert.Equal(42, movie.TraktId);
-        Assert.Equal(2, movie.WatchCount);
+        Assert.Equal(new DateTimeOffset(2026, 1, 2, 10, 0, 0, TimeSpan.Zero), movie.WatchedAt);
     }
 
     private sealed class FixtureHandler(params HttpResponseMessage[] responses) : HttpMessageHandler

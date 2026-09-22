@@ -11,8 +11,8 @@ public sealed class YearReviewServiceTests
         {
             Movies =
             [
-                Watched(MediaType.Movie, 1, "Watched Twice", "2026-01-02T10:00:00Z", 1),
-                Watched(MediaType.Movie, 1, "Watched Twice", "2026-02-02T10:00:00Z", 2)
+                Watched(MediaType.Movie, 1, "Watched Twice", "2026-01-02T10:00:00Z"),
+                Watched(MediaType.Movie, 1, "Watched Twice", "2026-02-02T10:00:00Z")
             ],
             RatedMovies =
             [
@@ -38,9 +38,9 @@ public sealed class YearReviewServiceTests
         {
             Movies =
             [
-                Watched(MediaType.Movie, 1, "Low", "2026-01-01T10:00:00Z", 1),
-                Watched(MediaType.Movie, 2, "High", "2026-01-02T10:00:00Z", 1),
-                Watched(MediaType.Movie, 3, "Medium", "2026-01-03T10:00:00Z", 1)
+                Watched(MediaType.Movie, 1, "Low", "2026-01-01T10:00:00Z"),
+                Watched(MediaType.Movie, 2, "High", "2026-01-02T10:00:00Z"),
+                Watched(MediaType.Movie, 3, "Medium", "2026-01-03T10:00:00Z")
             ],
             RatedMovies =
             [
@@ -81,9 +81,9 @@ public sealed class YearReviewServiceTests
         {
             Movies =
             [
-                Watched(MediaType.Movie, 1, "Popular Tie", "2026-01-01T10:00:00Z", 1),
-                Watched(MediaType.Movie, 2, "Frequent Tie", "2026-01-02T10:00:00Z", 3),
-                Watched(MediaType.Movie, 3, "Too Low", "2026-01-03T10:00:00Z", 5)
+                Watched(MediaType.Movie, 1, "Popular Tie", "2026-01-01T10:00:00Z"),
+                Watched(MediaType.Movie, 2, "Frequent Tie", "2026-01-02T10:00:00Z"),
+                Watched(MediaType.Movie, 3, "Too Low", "2026-01-03T10:00:00Z")
             ],
             RatedMovies =
             [
@@ -99,11 +99,11 @@ public sealed class YearReviewServiceTests
         Assert.Equal(["Frequent Tie", "Popular Tie"], result.Items.Select(item => item.Title));
     }
 
-    private static TraktWatchedTitle Watched(MediaType mediaType, int id, string title, string watchedAt, int plays) =>
-        new(mediaType, id, title, 2026, DateTimeOffset.Parse(watchedAt), plays, null);
+    private static TraktWatchedTitle Watched(MediaType mediaType, int id, string title, string watchedAt) =>
+        new(mediaType, id, title, 2026, DateTimeOffset.Parse(watchedAt));
 
     private static TraktRatedTitle Rated(MediaType mediaType, int id, string title, string ratedAt, decimal rating) =>
-        new(mediaType, id, title, 2026, DateTimeOffset.Parse(ratedAt), rating, null);
+        new(mediaType, id, title, 2026, DateTimeOffset.Parse(ratedAt), rating);
 
     private sealed class MemoryStore : IYearReviewStore
     {

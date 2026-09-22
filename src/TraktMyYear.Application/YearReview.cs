@@ -26,9 +26,8 @@ public sealed record TraktWatchedTitle(
     string Title,
     int? Year,
     DateTimeOffset WatchedAt,
-    int WatchCount,
-    decimal? TraktRating,
     string? PosterUrl = null,
+    string? TraktUrl = null,
     string? Overview = null);
 
 public sealed record TraktRatedTitle(
@@ -38,8 +37,8 @@ public sealed record TraktRatedTitle(
     int? Year,
     DateTimeOffset RatedAt,
     decimal? PersonalRating,
-    decimal? TraktRating,
     string? PosterUrl = null,
+    string? TraktUrl = null,
     string? Overview = null);
 
 public sealed record YearReviewItem(
@@ -49,10 +48,9 @@ public sealed record YearReviewItem(
     int? Year,
     DateTimeOffset? WatchedAt,
     DateTimeOffset? RatedAt,
-    int WatchCount,
     decimal? PersonalRating,
-    decimal? TraktRating,
     string? PosterUrl,
+    string? TraktUrl,
     string? Overview);
 
 public sealed record YearReviewSnapshot(
@@ -222,9 +220,8 @@ public sealed class YearReviewService(
         var snapshot = await GetSnapshotAsync(year, cancellationToken);
         var items = snapshot.Items
             .Where(item => item.MediaType == mediaType)
-            .Where(item => !minimumRating.HasValue || (item.PersonalRating ?? item.TraktRating) >= minimumRating)
-            .OrderByDescending(item => item.PersonalRating ?? item.TraktRating ?? decimal.MinValue)
-            .ThenByDescending(item => item.WatchCount)
+            .Where(item => !minimumRating.HasValue || item.PersonalRating >= minimumRating)
+            .OrderByDescending(item => item.PersonalRating ?? decimal.MinValue)
             .ThenBy(item => item.Title)
             .ThenBy(item => item.TraktId)
             .Take(limit)
@@ -242,8 +239,8 @@ public sealed class YearReviewService(
             ? items.OrderBy(item => item.Title).ThenBy(item => item.TraktId)
             : items.OrderByDescending(item => item.Title).ThenByDescending(item => item.TraktId),
         YearReviewSort.Rating => direction == SortDirection.Asc
-            ? items.OrderBy(item => item.PersonalRating ?? item.TraktRating ?? decimal.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId)
-            : items.OrderByDescending(item => item.PersonalRating ?? item.TraktRating ?? decimal.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId),
+            ? items.OrderBy(item => item.PersonalRating ?? decimal.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId)
+            : items.OrderByDescending(item => item.PersonalRating ?? decimal.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId),
         YearReviewSort.WatchedAt => direction == SortDirection.Asc
             ? items.OrderBy(item => item.WatchedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId)
             : items.OrderByDescending(item => item.WatchedAt ?? DateTimeOffset.MinValue).ThenBy(item => item.Title).ThenBy(item => item.TraktId),
@@ -308,10 +305,9 @@ public sealed class YearReviewService(
                     watchedTitle.Year,
                     watchedTitle.WatchedAt,
                     rating?.RatedAt,
-                    group.Sum(item => item.WatchCount),
                     rating?.PersonalRating,
-                    rating?.TraktRating ?? watchedTitle.TraktRating,
                     rating?.PosterUrl ?? watchedTitle.PosterUrl,
+                    rating?.TraktUrl ?? watchedTitle.TraktUrl,
                     rating?.Overview ?? watchedTitle.Overview);
             })
             .ToList();
@@ -325,10 +321,9 @@ public sealed class YearReviewService(
                 rating.Year,
                 null,
                 rating.RatedAt,
-                0,
                 rating.PersonalRating,
-                rating.TraktRating,
                 rating.PosterUrl,
+                rating.TraktUrl,
                 rating.Overview));
         }
 

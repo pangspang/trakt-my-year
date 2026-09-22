@@ -71,14 +71,13 @@ public sealed class YearReviewsController(IYearReviewService yearReviewService) 
         try
         {
             var items = await yearReviewService.GetAllTitlesAsync(year, mediaType, sort, direction, cancellationToken);
-            var csv = new StringBuilder("mediaType,traktId,title,year,watchedAt,ratedAt,watchCount,personalRating,traktRating,posterUrl\r\n");
+            var csv = new StringBuilder("mediaType,traktId,title,year,watchedAt,ratedAt,personalRating,posterUrl,traktUrl\r\n");
             foreach (var item in items)
             {
                 csv.AppendJoin(',', Csv(item.MediaType.ToString()), item.TraktId.ToString(CultureInfo.InvariantCulture), Csv(item.Title),
                     item.Year?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, Csv(item.WatchedAt?.ToString("O")),
-                    Csv(item.RatedAt?.ToString("O")), item.WatchCount.ToString(CultureInfo.InvariantCulture),
-                    item.PersonalRating?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
-                    item.TraktRating?.ToString(CultureInfo.InvariantCulture) ?? string.Empty, Csv(item.PosterUrl));
+                    Csv(item.RatedAt?.ToString("O")), item.PersonalRating?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+                    Csv(item.PosterUrl), Csv(item.TraktUrl));
                 csv.Append("\r\n");
             }
 
@@ -96,7 +95,7 @@ public sealed class YearReviewsController(IYearReviewService yearReviewService) 
         }
     }
 
-    /// <summary>Returns a configurable ranked list using rating, watch count, title, and ID as tie-breakers.</summary>
+    /// <summary>Returns a configurable ranked list using personal rating, title, and ID as tie-breakers.</summary>
     [HttpGet("{year:int}/{mediaType}/top")]
     public async Task<ActionResult<TopYearReview>> GetTop(
         int year,

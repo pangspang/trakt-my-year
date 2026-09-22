@@ -66,7 +66,7 @@ public sealed class TraktGateway(
         CancellationToken cancellationToken)
     {
         var rows = await GetPagesAsync<WatchedMovieRow>(
-            $"/users/{Uri.EscapeDataString(username)}/watched/movies?extended=min",
+            $"/users/{Uri.EscapeDataString(username)}/watched/movies?extended=full",
             cancellationToken);
         return rows.Where(row => row.Movie?.Ids?.Trakt is not null && row.LastWatchedAt is not null && row.LastWatchedAt >= startAt && row.LastWatchedAt < endAt)
             .Select(row => new TraktWatchedTitle(
@@ -75,9 +75,8 @@ public sealed class TraktGateway(
                 row.Movie.Title,
                 row.Movie.Year,
                 row.LastWatchedAt!.Value,
-                Math.Max(row.PlayCount ?? 0, 1),
-                row.Movie.Rating,
                 row.Movie.Images?.Poster?.FirstOrDefault(),
+                BuildTraktUrl(MediaType.Movie, row.Movie.Ids!.Slug, row.Movie.Ids.Trakt.Value),
                 row.Movie.Overview))
             .ToArray();
     }
@@ -88,7 +87,7 @@ public sealed class TraktGateway(
         CancellationToken cancellationToken)
     {
         var rows = await GetPagesAsync<WatchedShowRow>(
-            $"/users/{Uri.EscapeDataString(username)}/watched/shows?extended=min",
+            $"/users/{Uri.EscapeDataString(username)}/watched/shows?extended=full",
             cancellationToken);
         return rows.Where(row => row.Show?.Ids?.Trakt is not null && row.LastWatchedAt is not null && row.LastWatchedAt >= startAt && row.LastWatchedAt < endAt)
             .Select(row => new TraktWatchedTitle(
@@ -97,9 +96,8 @@ public sealed class TraktGateway(
                 row.Show.Title,
                 row.Show.Year,
                 row.LastWatchedAt!.Value,
-                Math.Max(row.PlayCount ?? 0, 1),
-                row.Show.Rating,
                 row.Show.Images?.Poster?.FirstOrDefault(),
+                BuildTraktUrl(MediaType.Show, row.Show.Ids!.Slug, row.Show.Ids.Trakt.Value),
                 row.Show.Overview))
             .ToArray();
     }
@@ -110,7 +108,7 @@ public sealed class TraktGateway(
         CancellationToken cancellationToken)
     {
         var rows = await GetPagesAsync<RatedMovieRow>(
-            $"/users/{Uri.EscapeDataString(username)}/ratings/movies",
+            $"/users/{Uri.EscapeDataString(username)}/ratings/movies?extended=full",
             cancellationToken);
         return rows.Where(row => row.Movie?.Ids?.Trakt is not null && row.RatedAt >= startAt && row.RatedAt < endAt)
             .Select(row => new TraktRatedTitle(
@@ -120,8 +118,8 @@ public sealed class TraktGateway(
                 row.Movie.Year,
                 row.RatedAt!.Value,
                 row.Rating,
-                row.Movie.Rating,
                 row.Movie.Images?.Poster?.FirstOrDefault(),
+                BuildTraktUrl(MediaType.Movie, row.Movie.Ids!.Slug, row.Movie.Ids.Trakt.Value),
                 row.Movie.Overview))
             .ToArray();
     }
@@ -132,7 +130,7 @@ public sealed class TraktGateway(
         CancellationToken cancellationToken)
     {
         var rows = await GetPagesAsync<RatedShowRow>(
-            $"/users/{Uri.EscapeDataString(username)}/ratings/shows",
+            $"/users/{Uri.EscapeDataString(username)}/ratings/shows?extended=full",
             cancellationToken);
         return rows.Where(row => row.Show?.Ids?.Trakt is not null && row.RatedAt >= startAt && row.RatedAt < endAt)
             .Select(row => new TraktRatedTitle(
@@ -142,8 +140,8 @@ public sealed class TraktGateway(
                 row.Show.Year,
                 row.RatedAt!.Value,
                 row.Rating,
-                row.Show.Rating,
                 row.Show.Images?.Poster?.FirstOrDefault(),
+                BuildTraktUrl(MediaType.Show, row.Show.Ids!.Slug, row.Show.Ids.Trakt.Value),
                 row.Show.Overview))
             .ToArray();
     }
@@ -225,6 +223,9 @@ public sealed class TraktGateway(
     private static RatedShowRow ParseRatedShowRow(JsonElement element) =>
         new(ParseDecimal(element, "rating"), ParseDate(element, "rated_at"), ParseMovie(element, "show"));
 
+    private static string BuildTraktUrl(MediaType mediaType, string? slug, int traktId) =>
+        $"https://trakt.tv/{(mediaType == MediaType.Movie ? "movies" : "shows")}/{Uri.EscapeDataString(slug ?? traktId.ToString())}";
+
     private static MovieOrShow? ParseMovie(JsonElement row, string propertyName)
     {
         if (row.ValueKind != JsonValueKind.Object
@@ -237,7 +238,7 @@ public sealed class TraktGateway(
         Ids? ids = null;
         if (movie.TryGetProperty("ids", out var idsElement) && idsElement.ValueKind == JsonValueKind.Object)
         {
-            ids = new Ids(ParseInt(idsElement, "trakt"));
+            ids = new Ids(ParseInt(idsElement, "trakt"), ParseString(idsElement, "slug"));
         }
 
         Images? images = null;
@@ -255,7 +256,6 @@ public sealed class TraktGateway(
         return new MovieOrShow(
             ParseString(movie, "title") ?? string.Empty,
             ParseInt(movie, "year"),
-            ParseDecimal(movie, "rating"),
             ids,
             images,
             ParseString(movie, "overview"));
@@ -375,12 +375,13 @@ public sealed class TraktGateway(
         return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 
-    private sealed record Ids([property: JsonPropertyName("trakt")] int? Trakt);
+    private sealed record Ids(
+        [property: JsonPropertyName("trakt")] int? Trakt,
+        [property: JsonPropertyName("slug")] string? Slug);
     private sealed record Images([property: JsonPropertyName("poster")] List<string>? Poster);
     private sealed record MovieOrShow(
         string Title,
         int? Year,
-        decimal? Rating,
         Ids? Ids,
         Images? Images,
         string? Overview);
