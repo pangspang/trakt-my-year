@@ -16,9 +16,27 @@ The API should make it easy for a later presentation layer to answer questions s
 
 The first slice is API-first. A browser frontend is a separate slice built on the API contract.
 
+## Current Repository State
+
+The repository now contains a working local vertical slice rather than only a proposal:
+
+- The .NET 10 solution has API, application, domain, infrastructure, unit-test, and integration-test projects.
+- Trakt OAuth authorization-code login uses PKCE, validates OAuth state, and supports connect, status,
+  callback, and disconnect operations.
+- The API imports watched movies and shows, maps ratings and timestamps, excludes episode records,
+  applies a configured time zone, and caches normalized year reviews in memory.
+- Versioned year-review endpoints support overviews, sorting, paging, refresh, deterministic top lists,
+  and CSV exports.
+- A static browser dashboard provides year selection, sortable movie/show tables, refresh, top lists,
+  CSV downloads, and connection management.
+- OpenAPI output, checked-in HTTP examples, and automated unit/integration test projects are present.
+
+The current release remains intentionally local and single-user. Tokens and cached data are not
+persistent, the frontend is served by the API, and no database or deployment configuration exists yet.
+
 ## 2. Scope and Acceptance Criteria
 
-### MVP in scope
+### Implemented in the current MVP
 
 - Connect one Trakt account through OAuth 2.0 authorization-code flow.
 - Securely retain the Trakt access token and refresh token for the local application.
@@ -36,11 +54,11 @@ The first slice is API-first. A browser frontend is a separate slice built on th
 - Expose OpenAPI/Swagger UI and checked-in `.http` request examples.
 - Provide automated unit, integration, contract, and smoke validation.
 
-### Explicitly deferred
+### Deferred
 
 - SQL Server or another durable database.
 - Multi-user tenancy and account switching.
-- A presentation/frontend application.
+- A separate presentation/frontend application; the current dashboard is served from the API.
 - Individual episode history and episode-level counts.
 - Recommendation algorithms, editorial scoring, and public sharing.
 - Background synchronization and scheduled jobs.
@@ -51,7 +69,7 @@ The first slice is API-first. A browser frontend is a separate slice built on th
 Use the current .NET 10 ASP.NET Core Web API stack with nullable reference types, implicit usings,
 OpenAPI generation, and the built-in dependency injection and configuration systems.
 
-Suggested solution layout:
+Current solution layout:
 
 ```text
 src/
@@ -63,8 +81,7 @@ tests/
   TraktMyYear.UnitTests/
   TraktMyYear.IntegrationTests/
   TraktMyYear.ContractTests/
-requests/
-  trakt-my-year.http
+  src/TraktMyYear.Api/wwwroot/  static browser dashboard
 ```
 
 Keep the application and domain layers independent of Trakt's response JSON and of the cache
@@ -237,7 +254,7 @@ matching titles. Verify logs contain no secrets.
 
 ## 10. Delivery Slices
 
-### Slice 0 - Repository and baseline
+### Slice 0 - Repository and baseline (complete)
 
 - Create the .NET 10 solution and projects.
 - Add analyzers, formatting rules, configuration templates, README setup notes, and CI validation.
@@ -245,21 +262,21 @@ matching titles. Verify logs contain no secrets.
 
 **Exit gate:** clean restore/build/test and the API starts locally.
 
-### Slice 1 - Trakt authentication
+### Slice 1 - Trakt authentication (complete for local use)
 
 - Implement OAuth login/callback, protected token storage abstraction, auth status, and disconnect.
 - Add fake-provider tests and local setup documentation.
 
 **Exit gate:** a local test account can connect without secrets appearing in responses or logs.
 
-### Slice 2 - Import and normalized year review
+### Slice 2 - Import and normalized year review (complete for local use)
 
 - Implement typed Trakt client, pagination, token refresh, normalization, memory cache, and overview/list endpoints.
 - Add fixtures for movies, shows, repeated watches, ratings, missing fields, and episode records.
 
 **Exit gate:** all automated tests pass and a real account produces correct counts for one year.
 
-### Slice 3 - API usability and analysis foundations
+### Slice 3 - API usability and analysis foundations (complete for local use)
 
 - Finalize sorting/paging semantics, `.http` requests, OpenAPI descriptions, refresh behavior, and
   optional CSV export.
@@ -267,7 +284,7 @@ matching titles. Verify logs contain no secrets.
 
 **Exit gate:** the API can provide repeatable inputs for a presentation without manual data cleanup.
 
-### Slice 4 - SQL-ready persistence
+### Slice 4 - SQL-ready persistence (next)
 
 - Introduce a persistence port and SQL Server implementation behind the existing application
   interfaces.
@@ -277,7 +294,7 @@ matching titles. Verify logs contain no secrets.
 **Exit gate:** switching persistence implementations does not alter the public API contract or core
   aggregation tests.
 
-### Slice 5 - Frontend
+### Slice 5 - Separate frontend (deferred)
 
 - Build a separate frontend against the versioned API.
 - Include year selection, overview metrics, movie/show tabs, sortable tables, title details, and
