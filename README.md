@@ -104,3 +104,7 @@ Tests use fakes and do not require live Trakt credentials.
 - This is a single-user local application, not a hosted multi-user service.
 - Tokens are stored only in process memory and are cleared on restart or disconnect.
 - Use HTTPS and a protected secret store before exposing the application beyond localhost.
+
+## License
+
+This project is available under the [MIT License](LICENSE).
