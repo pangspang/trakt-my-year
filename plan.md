@@ -2,7 +2,7 @@
 
 ## 1. Product Goal
 
-Build a .NET 10 Web API that creates a year-in-review dataset from a user's Trakt account.
+Build a .NET 11 Web API that creates a year-in-review dataset from a user's Trakt account.
 The first release will support movies and TV shows as whole titles. Individual episodes are out
 of scope. A caller supplies a year such as `2026`; the API retrieves the relevant Trakt data,
 stores it in an in-memory cache, and serves a normalized overview and sortable title lists.
@@ -20,7 +20,7 @@ The first slice is API-first. A browser frontend is a separate slice built on th
 
 The repository now contains a working local vertical slice rather than only a proposal:
 
-- The .NET 10 solution has API, application, domain, infrastructure, unit-test, and integration-test projects.
+- The .NET 11 solution has API, application, domain, infrastructure, unit-test, and integration-test projects.
 - Trakt OAuth authorization-code login uses PKCE, validates OAuth state, and supports connect, status,
   callback, and disconnect operations.
 - The API imports watched movies and shows, maps ratings and timestamps, excludes episode records,
@@ -66,7 +66,7 @@ persistent, the frontend is served by the API, and no database or deployment con
 
 ## 3. Recommended Solution Shape
 
-Use the current .NET 10 ASP.NET Core Web API stack with nullable reference types, implicit usings,
+Use the current .NET 11 ASP.NET Core Web API stack with nullable reference types, implicit usings,
 OpenAPI generation, and the built-in dependency injection and configuration systems.
 
 Current solution layout:
@@ -256,7 +256,7 @@ matching titles. Verify logs contain no secrets.
 
 ### Slice 0 - Repository and baseline (complete)
 
-- Create the .NET 10 solution and projects.
+- Create the .NET 11 solution and projects.
 - Add analyzers, formatting rules, configuration templates, README setup notes, and CI validation.
 - Add a health endpoint and a minimal OpenAPI document.
 

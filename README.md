@@ -1,6 +1,6 @@
 # Trakt My Year
 
-Trakt My Year is a local .NET 10 web application that turns a Trakt account's movie and show
+Trakt My Year is a local .NET 11 web application that turns a Trakt account's movie and show
 history into a year-in-review dataset. It includes a browser view, a versioned HTTP API, CSV
 exports, and OpenAPI output. Episodes are intentionally represented as title-level show records.
 
@@ -9,7 +9,7 @@ memory and are lost when the application stops.
 
 ## Requirements
 
-- .NET 10 SDK
+- .NET 11 SDK
 - A Trakt account
 - A Trakt API application at <https://trakt.tv/oauth/applications>
 
@@ -143,7 +143,10 @@ dotnet build TraktMyYear.slnx
 dotnet test TraktMyYear.slnx
 ```
 
-Tests use fakes and do not require live Trakt credentials.
+Tests use fakes and do not require live Trakt credentials. They cover OAuth state and token
+handling, Trakt response mapping, year-review caching and queries, HTTP authentication routes,
+OpenAPI generation, and CSV/ZIP exports. Live Trakt login and Simkl imports still require manual
+validation with the respective services.
 
 ## Public repository notes
 

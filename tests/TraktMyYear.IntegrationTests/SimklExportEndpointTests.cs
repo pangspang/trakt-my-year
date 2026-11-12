@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -16,6 +17,92 @@ namespace TraktMyYear.IntegrationTests;
 
 public sealed class SimklExportEndpointTests
 {
+    [Fact]
+    public async Task YearReviewEndpointsShareCachedDataAndRefreshFromUpstream()
+    {
+        await using var host = await TestHost.StartAsync();
+        var overview = await host.Client.GetFromJsonAsync<YearReviewOverview>("/api/v1/year-reviews/2026");
+        Assert.NotNull(overview);
+        Assert.Equal(2026, overview.Year);
+        Assert.Equal(1, overview.MovieCount);
+        Assert.Equal(0, overview.ShowCount);
+        Assert.Equal(1, overview.TotalTitleCount);
+        Assert.Equal(1, overview.WatchedTitleCount);
+        Assert.Equal(0, overview.RatedTitleCount);
+        var requestCount = host.Handler.RequestCount;
+
+        var movies = await host.Client.GetFromJsonAsync<PagedYearReview>(
+            "/api/v1/year-reviews/2026/movies?sort=watchedAt&direction=desc&page=1&pageSize=1");
+        Assert.NotNull(movies);
+        Assert.Equal(1, movies.TotalCount);
+        Assert.Equal(1, movies.Page);
+        Assert.Equal(1, movies.PageSize);
+        Assert.Equal("Example", Assert.Single(movies.Items).Title);
+        Assert.Equal(overview.GeneratedAt, movies.GeneratedAt);
+
+        var shows = await host.Client.GetFromJsonAsync<PagedYearReview>("/api/v1/year-reviews/2026/shows");
+        Assert.NotNull(shows);
+        Assert.Empty(shows.Items);
+        var top = await host.Client.GetFromJsonAsync<TopYearReview>(
+            "/api/v1/year-reviews/2026/movie/top?limit=5&minimumRating=8");
+        Assert.NotNull(top);
+        Assert.Equal(5, top.Limit);
+        Assert.Equal(8m, top.MinimumRating);
+        Assert.Empty(top.Items);
+        Assert.Equal(requestCount, host.Handler.RequestCount);
+
+        using var refreshed = await host.Client.PostAsync("/api/v1/year-reviews/2026/refresh", null);
+        Assert.Equal(HttpStatusCode.OK, refreshed.StatusCode);
+        var refreshedOverview = await refreshed.Content.ReadFromJsonAsync<YearReviewOverview>();
+        Assert.NotNull(refreshedOverview);
+        Assert.Equal(overview.TotalTitleCount, refreshedOverview.TotalTitleCount);
+        Assert.True(host.Handler.RequestCount > requestCount);
+    }
+
+    [Fact]
+    public async Task AuthenticationRoutesPreserveStatusPkceAndCallbackValidation()
+    {
+        await using var host = await TestHost.StartAsync();
+        using var status = JsonDocument.Parse(await host.Client.GetStringAsync("/api/v1/auth/status"));
+        Assert.False(status.RootElement.GetProperty("connected").GetBoolean());
+
+        using var login = await host.Client.GetAsync("/api/v1/auth/trakt/login");
+        Assert.Equal(HttpStatusCode.Redirect, login.StatusCode);
+        var location = Assert.IsType<Uri>(login.Headers.Location);
+        Assert.Equal("auth.trakt.tv", location.Host);
+        Assert.Contains("code_challenge_method=S256", location.Query);
+        Assert.Contains("code_challenge=", location.Query);
+        Assert.Contains("state=", location.Query);
+
+        using var incomplete = await host.Client.GetAsync("/api/v1/auth/trakt/callback");
+        Assert.Equal(HttpStatusCode.BadRequest, incomplete.StatusCode);
+        using var invalidState = await host.Client.GetAsync("/api/v1/auth/trakt/callback?code=fake-code&state=invalid");
+        Assert.Equal(HttpStatusCode.BadRequest, invalidState.StatusCode);
+        using var disconnect = await host.Client.DeleteAsync("/api/v1/auth/trakt");
+        Assert.Equal(HttpStatusCode.NoContent, disconnect.StatusCode);
+        Assert.Equal(0, host.Handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task OpenApiDocumentDescribesAuthenticationReviewsAndExports()
+    {
+        await using var host = await TestHost.StartAsync();
+        using var response = await host.Client.GetAsync("/openapi/v1.json");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.StartsWith("3.", document.RootElement.GetProperty("openapi").GetString());
+        var paths = document.RootElement.GetProperty("paths");
+        Assert.True(paths.GetProperty("/api/v1/auth/status").TryGetProperty("get", out _));
+        Assert.True(paths.GetProperty("/api/v1/year-reviews/{year}").TryGetProperty("get", out _));
+        Assert.True(paths.GetProperty("/api/v1/year-reviews/{year}/refresh").TryGetProperty("post", out _));
+        var responses = paths.GetProperty("/api/v1/year-reviews/{year}/{mediaType}/export.csv")
+            .GetProperty("get").GetProperty("responses");
+        Assert.True(responses.TryGetProperty("200", out _));
+        Assert.True(responses.TryGetProperty("400", out _));
+        Assert.True(responses.TryGetProperty("409", out _));
+        Assert.True(responses.TryGetProperty("502", out _));
+    }
+
     [Fact]
     public async Task SimklDownloadsAllTitlesAndLeavesDefaultCsvUnchanged()
     {
@@ -118,6 +205,8 @@ public sealed class SimklExportEndpointTests
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             builder.Logging.ClearProviders();
             builder.Services.AddControllers().AddApplicationPart(typeof(YearReviewsController).Assembly);
+            builder.Services.AddOpenApi();
+            builder.Services.AddSingleton<IAuthenticationService, AuthenticationService>();
             builder.Services.AddInfrastructureServices(builder.Configuration);
             builder.Services.PostConfigure<TraktOptions>(options =>
             {
@@ -132,9 +221,13 @@ public sealed class SimklExportEndpointTests
             builder.Services.AddHttpClient<TraktGateway>().ConfigurePrimaryHttpMessageHandler(() => handler);
             var app = builder.Build();
             app.MapControllers();
+            app.MapOpenApi();
             await app.StartAsync();
             var address = app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
-            return new TestHost(app, new HttpClient { BaseAddress = new Uri(address) }, handler);
+            return new TestHost(app, new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            {
+                BaseAddress = new Uri(address)
+            }, handler);
         }
 
         public async ValueTask DisposeAsync()
