@@ -283,6 +283,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IYearBoundaryProvider, ConfiguredYearBoundaryProvider>();
         services.AddSingleton<IYearReviewStore, MemoryYearReviewStore>();
         services.AddSingleton<IYearReviewService, YearReviewService>();
+        services.AddTransient<SimklExportService>();
         services.AddHttpClient<ITraktOAuthClient, TraktOAuthClient>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<TraktOptions>>().Value;
@@ -291,7 +292,7 @@ public static class InfrastructureServiceCollectionExtensions
             client.DefaultRequestHeaders.UserAgent.ParseAdd("TraktMyYear/1.0");
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         });
-        services.AddHttpClient<ITraktGateway, TraktGateway>((provider, client) =>
+        services.AddHttpClient<TraktGateway>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<TraktOptions>>().Value;
             client.BaseAddress = new Uri(options.ApiBaseUrl);
@@ -301,6 +302,8 @@ public static class InfrastructureServiceCollectionExtensions
             client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             client.Timeout = TimeSpan.FromSeconds(30);
         });
+        services.AddTransient<ITraktGateway>(provider => provider.GetRequiredService<TraktGateway>());
+        services.AddTransient<ISimklExportSource>(provider => provider.GetRequiredService<TraktGateway>());
         return services;
     }
 }

@@ -284,6 +284,125 @@ matching titles. Verify logs contain no secrets.
 
 **Exit gate:** the API can provide repeatable inputs for a presentation without manual data cleanup.
 
+### Slice 3a - Simkl-compatible CSV export (implemented; manual import gate pending)
+
+**Goal:** add an additional CSV format that can be imported at
+<https://simkl.com/apps/import/csv/>, filling every field supported by reliable source data.
+Keep the existing spreadsheet/presentation CSV unchanged.
+
+**Implementation status (2026-11-06):** the API and dashboard now support `format=simkl`,
+external IDs are preserved through the gateway and normalized records, and a separate export
+source uses complete selected-year history plus current ratings. The default cached review and
+spreadsheet CSV retain their existing semantics. All 13 headers are emitted; `LastEpWatched`
+uses the episode from the latest show watch within the selected year, formatted as `S04E08`.
+Unknown episodes, show completion status, personal notes, and unsupported IDs remain blank. Large exports
+download as a ZIP with independently importable parts capped at 4,900,000 UTF-8 bytes each.
+Automated parser, mapping, pagination, service, and real-HTTP tests cover the implemented path.
+Live Trakt contract confirmation and manual import into a disposable Simkl account remain release
+gates; no live account import has been performed or claimed.
+
+#### Format and evidence
+
+- Simkl's importer documents the 13 headers below, in any order; unknown columns are ignored.
+  All columns are optional, but each exported row must have useful identification: prefer an
+  external ID, with title and release year as fallback. A Trakt ID is not a Simkl ID.
+- `Type` accepts `movie`, `tv`, or `anime`. `TMDB_ID` requires `Type` because movie and TV IDs
+  share a numeric namespace. Simkl searches anime too when a `tv` title is not found in TV.
+- `Watchlist` accepts `watching`, `plan to watch`, `completed`, `dropped`, or `on hold`.
+  `Rating` is a personal score from 1 to 10. `WatchedDate` is UTC; use the documented
+  date-only `DD-MM-YYYY` form initially, rather than assuming ISO 8601 is accepted.
+- The upload limit is 5 MB. Simkl warns that its CSV backup retains only the last episode
+  number, not individual episode history or gaps. Treat CSV as a lossy title/progress transfer,
+  not a complete migration of watch events or rewatches.
+- Sources checked on 2026-11-06: the Simkl page above and the repository's gateway, normalized
+  records, merge logic, and existing CSV controller. Trakt reference entry point:
+  <https://docs.trakt.tv/reference>. The attempted watched/ratings/history documentation URLs
+  redirected to unavailable pages. Synthetic fixtures validate implemented request paths and
+  response mapping; live confirmation against the current official contracts remains a release gate.
+
+#### Trakt API -> Trakt My Year -> Simkl cross-reference
+
+Paths below are response paths; `movie|show` means the matching title object in watched or
+ratings responses. Current reads use `/users/{username}/watched/{movies|shows}?extended=full`
+and `/users/{username}/ratings/{movies|shows}?extended=full`. Simkl export additionally reads
+`/users/{username}/history/{movies|shows}` with `start_at`, `end_at`, `extended=full`, and complete
+pagination. Shared identifiers now use nullable `TitleExternalIds` on both gateway records and
+`YearReviewItem`; export history aggregation and snapshot merges preserve IDs and reject conflicts.
+
+| Trakt API source | Current Trakt My Year model / proposed extension | Simkl CSV column | Mapping and gap / action |
+| --- | --- | --- | --- |
+| Movie/show endpoint or response type | `MediaType` on `TraktWatchedTitle`, `TraktRatedTitle`, and `YearReviewItem` | `Type` | `Movie` -> `movie`; `Show` -> `tv`. Do not guess `anime` from genres; use Simkl's documented TV/anime fallback. Available now. |
+| No Simkl ID in the currently consumed Trakt data | No member; optional future `SimklId` | `SIMKL_ID` | Blank unless an authoritative cross-service lookup is added. Never substitute `TraktId`. External lookups are provisionally out of scope. |
+| `show.ids.tvdb` where returned | `ExternalIds.Tvdb` through gateway parsing, both source records, and `YearReviewItem` | `TVDB_ID` | Implemented: preserve the show-level ID; leave missing values blank. Never use an episode TVDB ID for a show row. |
+| `movie.ids.tmdb` / `show.ids.tmdb` | `ExternalIds.Tmdb` through the same pipeline | `TMDB_ID` | Implemented: export numeric ID with the corresponding `Type`; blank when absent. |
+| `movie.ids.imdb` / `show.ids.imdb` | Nullable string `ExternalIds.Imdb` through the same pipeline | `IMDB_ID` | Implemented: preserve the full `tt...` string, including leading zeroes; blank when absent. |
+| No MAL ID in the currently consumed Trakt data | No member; optional future `MalId` | `MAL_ID` | Blank unless a verified upstream field or authoritative external mapping is available. Do not derive from Trakt/TMDB IDs or title matching alone. |
+| `movie.title` / `show.title` | `Title` on both source records and `YearReviewItem` | `Title` | Available now. Preserve Unicode and escape commas, quotes, and line breaks correctly. |
+| `movie.year` / `show.year` | Nullable `Year` on both source records and `YearReviewItem` | `Year` | Release year, not the selected review year. Available now; blank when unknown. |
+| History `episode.season` / `episode.number`, selected by latest `watched_at` within the year | Export `YearReviewItem.LastEpisodeWatched` stores a typed `WatchedEpisode(Season, Number)` alongside `WatchedAt` | `LastEpWatched` | Implemented: format `S04E08` with at least two digits; specials use `S00`. Latest by watch time, not highest episode number. Blank for movies, rating-only shows, or missing/invalid episode numbers; not proof of contiguous progress. |
+| Movie watch evidence; show watched progress; watchlist membership and paused/hidden state would require separate verified sources | `WatchedAt` supplies watch evidence only; proposed nullable export `WatchlistStatus` | `Watchlist` | Watched movie -> `completed`. A watched show is not necessarily completed; rating alone proves neither watched nor planned. Show completion, ongoing/partial progress, and explicit list states need verified rules. Leave uncertain status blank rather than inventing intent. |
+| History `watched_at` for Simkl export; watched response `last_watched_at` remains in the normal review | Export-only latest-in-year `YearReviewItem.WatchedAt` | `WatchedDate` | Implemented: convert instant to UTC, then format `dd-MM-yyyy` invariantly. Blank for rating-only rows. History resolves the later-rewatch issue for Simkl exports only. Date-only export intentionally loses time of day. |
+| Ratings response `rating` and `rated_at` | `TraktRatedTitle.PersonalRating` / `RatedAt` -> export `YearReviewItem.PersonalRating` / `RatedAt` | `Rating` | Implemented: current integer personal ratings 1-10, without rescaling; invalid/fractional values fail export. Missing stays blank. Current ratings enrich only included titles; see G3. Simkl has no rated-date column. |
+| Personal title notes, only if supported by a verified Trakt notes endpoint and account permissions | No personal-note member; `Overview` is a synopsis, not a user note; proposed export-only `Memo` | `Memo` | Prefer the user's own note if retrieval is supported and approved. Do not substitute synopsis, public comments, links, or generated text. Otherwise blank; verify note visibility, length, and multiline handling. |
+
+Other existing fields (`TraktId`, `RatedAt`, `PosterUrl`, `TraktUrl`, and `Overview`) have no
+dedicated Simkl column. Keep them in the existing export; do not overload `Memo` to carry them.
+
+#### Gaps and implementation work
+
+| Gap | Work and decision |
+| --- | --- |
+| G1 - External identifiers (implemented) | `TraktGateway` parsing, both source records, and `YearReviewItem` now preserve nullable `TitleExternalIds` for IMDb/TMDB/TVDB. Watched/rated metadata merges reject conflicting IDs. Parser and serializer fixtures cover absent IDs, string IMDb IDs, non-null merges, and conflicts. |
+| G2 - Export year membership (implemented) | Default watched endpoints still filter all-time `last_watched_at`, so a later rewatch can hide an earlier-year watch in the normal review. Simkl export independently retrieves complete time-bounded history, deduplicates titles, and keeps the latest watch within the selected year. Episode events become show rows only. Fixtures cover year boundaries, repeated watches, specials, out-of-order episodes, and more than 100 pages. Changing the normal review's membership is outside this slice. |
+| G3 - Ratings coverage (implemented) | The normal review retains selected-year rating semantics. Export reads all current ratings, enriches included watched titles even when rated outside the year, and adds rating-only titles only when their current `rated_at` is in the year. No unrelated titles are added. This cannot reconstruct historical rating changes and is explicitly documented as current-rating enrichment. |
+| G4 - Last watched episode (implemented); completion status deferred | Export retains `episode.season` and `episode.number` from the latest-in-year show history event and serializes `LastEpWatched` as `S04E08`. Specials use season `00`; missing/invalid episode numbers stay blank. Out-of-order history is resolved by watch timestamp, not highest episode number. This does not reconstruct all-time or contiguous progress; show status stays blank, and Simkl's treatment of gaps still needs manual verification. |
+| G5 - Notes and unsupported IDs | Verify Trakt personal-note API availability and permission requirements before committing to `Memo` enrichment; otherwise leave blank. Do not fetch public comments as private notes. Provisionally omit external Simkl/MAL lookups to avoid another credential, dependency, and ambiguous matching. Missing optional fields are legitimate, not values to invent. |
+| G6 - Export contract and UI (implemented) | `?format=simkl` uses the new application export service; `format=csv` and the omitted default preserve spreadsheet output. Dashboard selectors, OpenAPI metadata, HTTP examples, unpaged downloads, distinct filenames, and invalid-parameter checks are implemented and covered by real-HTTP tests. |
+| G7 - CSV compatibility and limits (implemented) | All 13 headers use UTF-8, commas, CRLF, invariant whole-number ratings, UTC dates, doubled quotes, and empty null cells. CSV parts are limited to 4,900,000 bytes, below either common interpretation of 5 MB, and split only at complete records with a header in every part. Multiple parts download in a ZIP. Tests cover Unicode byte sizes, multiline text, oversized records, header-only output, and ZIP contents. Formula-like text is preserved; spreadsheet risk is documented. |
+| G8 - Import semantics and privacy | Verify how Simkl handles blank `Watchlist`, rating-only rows, existing items, last-episode gaps, repeated imports, and UTC date parsing using synthetic data in a disposable account. These behaviors are not specified by the linked format table. Use the importer's per-row CSV mode rather than a global status override during verification. Do not log exported viewing history/notes or upload them automatically; export remains a user-initiated local download. |
+
+#### Selected defaults and remaining questions
+
+Implementation follows the conservative defaults below. The remaining enrichment choices must
+be resolved and verified before populating currently blank fields:
+
+1. **Year or full library?** Recommend the selected year, matching the existing export workflow,
+   including watched-in-year or rated-in-year titles. A full-library migration is a separate option
+   requiring an explicit API/UI scope and complete traversal, not removal of one date filter.
+2. **Episode enrichment allowed?** Export now reads episode history internally to establish show
+  year membership, while public collections/counts remain title-level. It does not retrieve or
+  claim all-time contiguous progress. `LastEpWatched` now identifies the latest episode watched
+  within the selected year; show status stays blank.
+3. **Historical or current enrichment?** Implemented selected-year `WatchedDate` with current
+  personal ratings. All-time show progress remains deferred. Historical rating values cannot be
+  recovered from the current ratings endpoint; this is documented in the API and README.
+4. **How should partial show progress import?** Per the user's follow-up, populate `LastEpWatched`
+  from the latest-by-time episode in the selected year, keeping it aligned with `WatchedDate`.
+  Do not infer completion. Simkl may interpret the value as progress across earlier episodes;
+  verify gap handling manually before using this as a full migration.
+5. **How much optional enrichment?** Recommend Trakt-only identifiers and personal notes where
+   available; blank `SIMKL_ID`/`MAL_ID`. Confirm whether personal notes are wanted or should stay
+   private, and whether external ID services are worth adding later.
+
+#### Validation and exit gate
+
+- Unit fixtures cover all 13 column mappings, optional blanks, ID propagation/merge, media types,
+  rating validation, UTC date rollover, missing years, CSV special characters/Unicode, and stable
+  column order. Use synthetic data, not exported real account data.
+- Add gateway/service fixtures for a watch in two different years, ratings outside the selected
+  year, rating-only titles, out-of-order episodes, gaps, specials, and incomplete/ongoing shows.
+  Prove export enrichment does not change review membership, counts, or rating-date semantics.
+- Integration checks cover the new format, unchanged default export, download headers, complete
+  unpaged output, invalid format/year/media type, empty/header-only output, upload-size splitting,
+  upstream failures, cancellation, and absence of secrets/private export contents from logs.
+- Run the existing restore/build/test gates. Manually import a small synthetic movie/show file
+  into a disposable Simkl account and check matching, rating/date/status/progress, blanks, and
+  duplicate-import behavior. Resolve the product questions and record tested importer semantics.
+
+**Exit gate:** approved scope, tested mapping for every populated column, documented intentional
+blanks/losses, unchanged existing CSV behavior, passing automated/security gates, and a successful
+manual Simkl import. Do not claim a complete watch-history migration from this CSV format.
+
 ### Slice 4 - SQL-ready persistence (next)
 
 - Introduce a persistence port and SQL Server implementation behind the existing application

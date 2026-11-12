@@ -20,6 +20,21 @@ public enum SortDirection
     Desc
 }
 
+public sealed record TitleExternalIds(string? Imdb = null, int? Tmdb = null, int? Tvdb = null)
+{
+    public static TitleExternalIds Merge(TitleExternalIds? first, TitleExternalIds? second)
+    {
+        if (first?.Imdb is not null && second?.Imdb is not null && first.Imdb != second.Imdb
+            || first?.Tmdb is not null && second?.Tmdb is not null && first.Tmdb != second.Tmdb
+            || first?.Tvdb is not null && second?.Tvdb is not null && first.Tvdb != second.Tvdb)
+        {
+            throw new InvalidOperationException("Trakt returned conflicting external title identifiers.");
+        }
+
+        return new(first?.Imdb ?? second?.Imdb, first?.Tmdb ?? second?.Tmdb, first?.Tvdb ?? second?.Tvdb);
+    }
+}
+
 public sealed record TraktWatchedTitle(
     MediaType MediaType,
     int TraktId,
@@ -28,7 +43,8 @@ public sealed record TraktWatchedTitle(
     DateTimeOffset WatchedAt,
     string? PosterUrl = null,
     string? TraktUrl = null,
-    string? Overview = null);
+    string? Overview = null,
+    TitleExternalIds? ExternalIds = null);
 
 public sealed record TraktRatedTitle(
     MediaType MediaType,
@@ -39,7 +55,10 @@ public sealed record TraktRatedTitle(
     decimal? PersonalRating,
     string? PosterUrl = null,
     string? TraktUrl = null,
-    string? Overview = null);
+    string? Overview = null,
+    TitleExternalIds? ExternalIds = null);
+
+public sealed record WatchedEpisode(int Season, int Number);
 
 public sealed record YearReviewItem(
     MediaType MediaType,
@@ -51,7 +70,9 @@ public sealed record YearReviewItem(
     decimal? PersonalRating,
     string? PosterUrl,
     string? TraktUrl,
-    string? Overview);
+    string? Overview,
+    TitleExternalIds? ExternalIds = null,
+    WatchedEpisode? LastEpisodeWatched = null);
 
 public sealed record YearReviewSnapshot(
     int Year,
@@ -230,7 +251,7 @@ public sealed class YearReviewService(
         return new TopYearReview(year, snapshot.GeneratedAt, mediaType, limit, minimumRating, items);
     }
 
-    private static IOrderedEnumerable<YearReviewItem> SortItems(
+    internal static IOrderedEnumerable<YearReviewItem> SortItems(
         IEnumerable<YearReviewItem> items,
         YearReviewSort sort,
         SortDirection direction) => sort switch
@@ -308,7 +329,8 @@ public sealed class YearReviewService(
                     rating?.PersonalRating,
                     rating?.PosterUrl ?? watchedTitle.PosterUrl,
                     rating?.TraktUrl ?? watchedTitle.TraktUrl,
-                    rating?.Overview ?? watchedTitle.Overview);
+                    rating?.Overview ?? watchedTitle.Overview,
+                    TitleExternalIds.Merge(watchedTitle.ExternalIds, rating?.ExternalIds));
             })
             .ToList();
 
@@ -324,7 +346,8 @@ public sealed class YearReviewService(
                 rating.PersonalRating,
                 rating.PosterUrl,
                 rating.TraktUrl,
-                rating.Overview));
+                rating.Overview,
+                rating.ExternalIds));
         }
 
         var snapshot = new YearReviewSnapshot(year, DateTimeOffset.UtcNow, items);

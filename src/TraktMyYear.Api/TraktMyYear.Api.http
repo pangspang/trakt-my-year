@@ -48,3 +48,13 @@ Accept: text/csv
 ###
 
 POST {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/refresh
+
+### Simkl movie export (large exports return a ZIP containing CSV parts)
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/movie/export.csv?format=simkl&sort=title&direction=asc
+Accept: text/csv, application/zip
+
+### Simkl show export (LastEpWatched uses the latest watch in the year, e.g. S04E08)
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/show/export.csv?format=simkl&sort=watchedAt&direction=desc
+Accept: text/csv, application/zip

@@ -81,13 +81,60 @@ POST /api/v1/year-reviews/2026/refresh
 GET /api/v1/year-reviews/2026/movie/top?limit=10&minimumRating=8
 GET /api/v1/year-reviews/2026/show/top?limit=10
 GET /api/v1/year-reviews/2026/movie/export.csv?sort=rating&direction=desc
+GET /api/v1/year-reviews/2026/movie/export.csv?format=simkl
+GET /api/v1/year-reviews/2026/show/export.csv?format=simkl
 DELETE /api/v1/auth/trakt
 ```
 
 The same requests are available in [TraktMyYear.Api.http](src/TraktMyYear.Api/TraktMyYear.Api.http).
 The first year request imports watched history and ratings into an in-memory snapshot. Snapshots
 expire after 30 minutes with a 10-minute sliding expiration; refresh explicitly rebuilds the year.
-CSV exports contain the complete cached collection for the selected media type.
+Default CSV exports contain the complete cached collection for the selected media type.
+
+## Simkl CSV export
+
+Choose **Simkl CSV** in the movie or show export selector, then **Download CSV**, or add
+`format=simkl` to the existing export endpoint. The default format (`format=csv`) is unchanged.
+Both formats export all matching titles, independently of table pagination or top-list limits.
+
+The Simkl export reads fresh, paginated Trakt history for the selected calendar year using the
+configured time zone. It counts each movie/show once and keeps its latest watch within that year.
+Episode events are grouped into shows internally, not returned as episode rows. Titles currently
+rated in the selected year are also included, with no invented watch date or completion status.
+Current personal ratings enrich included titles even when rated outside the selected year; unrelated
+titles rated outside the year are not added. This is not a historical snapshot of past rating values.
+The normal dashboard and default CSV keep their existing cached review semantics, so a title
+rewatched in a later year can appear in the earlier year's Simkl export but not its dashboard.
+
+Files use Simkl's 13 documented columns, with movie/TV type, available IMDb/TMDB/TVDB IDs, title,
+release year, UTC watch date (`DD-MM-YYYY`), and personal integer rating (1-10). Watched movies
+are marked `completed`. For shows, `LastEpWatched` contains the season and episode from the
+latest watch event in the selected year, formatted as `S04E08` (specials use season `00`). This
+is latest by watch time, not the highest episode number or a guarantee of contiguous progress.
+Movies, rating-only shows, and unknown episode numbers leave this field blank. Missing optional
+values remain blank. `SIMKL_ID`, `MAL_ID`, and `Memo` are intentionally blank; show `Watchlist`
+is also blank because a watch does not establish completion. No external ID lookups or private-note
+requests are made. Trakt IDs are never used as Simkl IDs.
+
+Each UTF-8 CSV is limited to 4,900,000 bytes, conservatively below Simkl's advertised 5 MB limit.
+Large downloads return a ZIP archive: extract it and import each CSV part separately. Each part
+has its own header and complete records; a single record exceeding the limit fails the export.
+Downloads are marked `Cache-Control: no-store`; no data is automatically uploaded to Simkl.
+
+At <https://simkl.com/apps/import/csv/>, select **Use .csv data** rather than overriding every
+row's status. Manual validation in a disposable Simkl account is still required, especially for
+blank show status, rating-only rows, and repeated imports. The importer is not a full watch-event
+or rewatch migration tool. Do not clear an existing Simkl library merely to test an export.
+
+**Import limitation:** Movie exports work well for transferring movie titles, watch dates, and
+ratings. Series episode import is only partial: `LastEpWatched` records a single latest episode
+marker, not the complete set of watched episodes. Simkl may therefore not restore series progress
+or episode history exactly, especially when episodes were watched out of order or there are gaps.
+Treat the series CSV as a best-effort title/progress hint, not a complete episode migration.
+
+Title text is preserved, including formula-like prefixes. CSV quoting does not prevent spreadsheet
+formula execution: import such columns as plain text in spreadsheet tools, and treat personal
+exports as private data. Do not commit generated files or send them to logs.
 
 ## Test and build
 

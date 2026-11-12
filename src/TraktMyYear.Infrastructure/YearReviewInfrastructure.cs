@@ -36,11 +36,84 @@ public sealed class TraktGateway(
     HttpClient httpClient,
     ITokenStore tokenStore,
     ITraktOAuthClient oauthClient,
-    Microsoft.Extensions.Options.IOptions<TraktOptions> options) : ITraktGateway
+    Microsoft.Extensions.Options.IOptions<TraktOptions> options) : ITraktGateway, ISimklExportSource
 {
     private const int PageSize = 100;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly string username = options.Value.Username;
+
+    public async Task<IReadOnlyList<YearReviewItem>> GetExportTitlesAsync(
+        MediaType mediaType,
+        DateTimeOffset startAt,
+        DateTimeOffset endAt,
+        CancellationToken cancellationToken = default)
+    {
+        var resource = mediaType == MediaType.Movie ? "movies" : "shows";
+        var start = Uri.EscapeDataString(startAt.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+        var end = Uri.EscapeDataString(endAt.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture));
+        var history = await GetPagesAsync<JsonElement>(
+            $"/users/{Uri.EscapeDataString(username)}/history/{resource}?extended=full&start_at={start}&end_at={end}",
+            cancellationToken,
+            requireComplete: true);
+        var watched = new Dictionary<int, YearReviewItem>();
+        foreach (var row in history)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (ParseString(row, "type") != (mediaType == MediaType.Movie ? "movie" : "episode"))
+            {
+                continue;
+            }
+
+            var title = ParseMovie(row, mediaType == MediaType.Movie ? "movie" : "show");
+            var timestamp = ParseDate(row, "watched_at");
+            if (title?.Ids?.Trakt is not int id || timestamp is null)
+            {
+                throw new InvalidOperationException("Trakt returned incomplete watch history.");
+            }
+
+            if (timestamp < startAt || timestamp >= endAt)
+            {
+                continue;
+            }
+
+            var item = new YearReviewItem(mediaType, id, title.Title, title.Year, timestamp, null, null,
+                title.Images?.Poster?.FirstOrDefault(), BuildTraktUrl(mediaType, title.Ids.Slug, id), title.Overview,
+                title.Ids.ExternalIds, mediaType == MediaType.Show ? ParseWatchedEpisode(row) : null);
+            if (watched.TryGetValue(id, out var previous))
+            {
+                var ids = TitleExternalIds.Merge(previous.ExternalIds, item.ExternalIds);
+                watched[id] = (previous.WatchedAt > timestamp ? previous : item) with { ExternalIds = ids };
+            }
+            else
+            {
+                watched.Add(id, item);
+            }
+        }
+
+        var ratings = await (mediaType == MediaType.Movie
+            ? GetRatedMoviesAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, cancellationToken, requireComplete: true)
+            : GetRatedShowsAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, cancellationToken, requireComplete: true));
+        foreach (var rating in ratings.GroupBy(item => item.TraktId).Select(group => group.MaxBy(item => item.RatedAt)!))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (watched.TryGetValue(rating.TraktId, out var item))
+            {
+                watched[rating.TraktId] = item with
+                {
+                    PersonalRating = rating.PersonalRating,
+                    RatedAt = rating.RatedAt,
+                    ExternalIds = TitleExternalIds.Merge(item.ExternalIds, rating.ExternalIds)
+                };
+            }
+            else if (rating.RatedAt >= startAt && rating.RatedAt < endAt)
+            {
+                watched.Add(rating.TraktId, new YearReviewItem(mediaType, rating.TraktId, rating.Title, rating.Year,
+                    null, rating.RatedAt, rating.PersonalRating, rating.PosterUrl, rating.TraktUrl, rating.Overview, rating.ExternalIds));
+            }
+        }
+
+        return watched.Values.ToArray();
+    }
 
     public Task<IReadOnlyList<TraktWatchedTitle>> GetWatchedAsync(
         MediaType mediaType,
@@ -77,7 +150,8 @@ public sealed class TraktGateway(
                 row.LastWatchedAt!.Value,
                 row.Movie.Images?.Poster?.FirstOrDefault(),
                 BuildTraktUrl(MediaType.Movie, row.Movie.Ids!.Slug, row.Movie.Ids.Trakt.Value),
-                row.Movie.Overview))
+                row.Movie.Overview,
+                row.Movie.Ids.ExternalIds))
             .ToArray();
     }
 
@@ -98,18 +172,25 @@ public sealed class TraktGateway(
                 row.LastWatchedAt!.Value,
                 row.Show.Images?.Poster?.FirstOrDefault(),
                 BuildTraktUrl(MediaType.Show, row.Show.Ids!.Slug, row.Show.Ids.Trakt.Value),
-                row.Show.Overview))
+                row.Show.Overview,
+                row.Show.Ids.ExternalIds))
             .ToArray();
     }
 
     private async Task<IReadOnlyList<TraktRatedTitle>> GetRatedMoviesAsync(
         DateTimeOffset startAt,
         DateTimeOffset endAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireComplete = false)
     {
         var rows = await GetPagesAsync<RatedMovieRow>(
             $"/users/{Uri.EscapeDataString(username)}/ratings/movies?extended=full",
-            cancellationToken);
+            cancellationToken, requireComplete);
+        if (requireComplete && rows.Any(row => row.Movie?.Ids?.Trakt is null || row.RatedAt is null))
+        {
+            throw new InvalidOperationException("Trakt returned incomplete movie ratings.");
+        }
+
         return rows.Where(row => row.Movie?.Ids?.Trakt is not null && row.RatedAt >= startAt && row.RatedAt < endAt)
             .Select(row => new TraktRatedTitle(
                 MediaType.Movie,
@@ -120,18 +201,25 @@ public sealed class TraktGateway(
                 row.Rating,
                 row.Movie.Images?.Poster?.FirstOrDefault(),
                 BuildTraktUrl(MediaType.Movie, row.Movie.Ids!.Slug, row.Movie.Ids.Trakt.Value),
-                row.Movie.Overview))
+                row.Movie.Overview,
+                row.Movie.Ids.ExternalIds))
             .ToArray();
     }
 
     private async Task<IReadOnlyList<TraktRatedTitle>> GetRatedShowsAsync(
         DateTimeOffset startAt,
         DateTimeOffset endAt,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireComplete = false)
     {
         var rows = await GetPagesAsync<RatedShowRow>(
             $"/users/{Uri.EscapeDataString(username)}/ratings/shows?extended=full",
-            cancellationToken);
+            cancellationToken, requireComplete);
+        if (requireComplete && rows.Any(row => row.Show?.Ids?.Trakt is null || row.RatedAt is null))
+        {
+            throw new InvalidOperationException("Trakt returned incomplete show ratings.");
+        }
+
         return rows.Where(row => row.Show?.Ids?.Trakt is not null && row.RatedAt >= startAt && row.RatedAt < endAt)
             .Select(row => new TraktRatedTitle(
                 MediaType.Show,
@@ -142,18 +230,19 @@ public sealed class TraktGateway(
                 row.Rating,
                 row.Show.Images?.Poster?.FirstOrDefault(),
                 BuildTraktUrl(MediaType.Show, row.Show.Ids!.Slug, row.Show.Ids.Trakt.Value),
-                row.Show.Overview))
+                row.Show.Overview,
+                row.Show.Ids.ExternalIds))
             .ToArray();
     }
 
-    private async Task<IReadOnlyList<T>> GetPagesAsync<T>(string path, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<T>> GetPagesAsync<T>(string path, CancellationToken cancellationToken, bool requireComplete = false)
     {
         var results = new List<T>();
-        for (var page = 1; page <= 100; page++)
+        for (var page = 1; requireComplete || page <= 100; page++)
         {
             var separator = path.Contains('?') ? '&' : '?';
             using var response = await SendAsync($"{path}{separator}page={page}&limit={PageSize}", cancellationToken);
-            var rows = await ReadRowsAsync<T>(response, cancellationToken);
+            var rows = await ReadRowsAsync<T>(response, cancellationToken, requireComplete);
             results.AddRange(rows);
             var pageCount = response.Headers.TryGetValues("X-Pagination-Page-Count", out var values)
                 && int.TryParse(values.FirstOrDefault(), out var count)
@@ -170,11 +259,17 @@ public sealed class TraktGateway(
 
     private static async Task<List<T>> ReadRowsAsync<T>(
         HttpResponseMessage response,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireArray = false)
     {
         await using var content = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(content, cancellationToken: cancellationToken);
         var root = document.RootElement;
+        if (requireArray && root.ValueKind != JsonValueKind.Array)
+        {
+            throw new JsonException("Trakt returned an unexpected export response shape.");
+        }
+
         var elements = root.ValueKind == JsonValueKind.Array
             ? root.EnumerateArray().ToArray()
             : root.ValueKind == JsonValueKind.Object
@@ -226,6 +321,18 @@ public sealed class TraktGateway(
     private static string BuildTraktUrl(MediaType mediaType, string? slug, int traktId) =>
         $"https://trakt.tv/{(mediaType == MediaType.Movie ? "movies" : "shows")}/{Uri.EscapeDataString(slug ?? traktId.ToString())}";
 
+    private static WatchedEpisode? ParseWatchedEpisode(JsonElement row)
+    {
+        if (row.TryGetProperty("episode", out var episode)
+            && ParseInt(episode, "season") is int season && season >= 0
+            && ParseInt(episode, "number") is int number && number > 0)
+        {
+            return new WatchedEpisode(season, number);
+        }
+
+        return null;
+    }
+
     private static MovieOrShow? ParseMovie(JsonElement row, string propertyName)
     {
         if (row.ValueKind != JsonValueKind.Object
@@ -238,7 +345,8 @@ public sealed class TraktGateway(
         Ids? ids = null;
         if (movie.TryGetProperty("ids", out var idsElement) && idsElement.ValueKind == JsonValueKind.Object)
         {
-            ids = new Ids(ParseInt(idsElement, "trakt"), ParseString(idsElement, "slug"));
+            ids = new Ids(ParseInt(idsElement, "trakt"), ParseString(idsElement, "slug"),
+                new TitleExternalIds(ParseString(idsElement, "imdb"), ParseInt(idsElement, "tmdb"), ParseInt(idsElement, "tvdb")));
         }
 
         Images? images = null;
@@ -377,7 +485,8 @@ public sealed class TraktGateway(
 
     private sealed record Ids(
         [property: JsonPropertyName("trakt")] int? Trakt,
-        [property: JsonPropertyName("slug")] string? Slug);
+        [property: JsonPropertyName("slug")] string? Slug,
+        TitleExternalIds ExternalIds);
     private sealed record Images([property: JsonPropertyName("poster")] List<string>? Poster);
     private sealed record MovieOrShow(
         string Title,
