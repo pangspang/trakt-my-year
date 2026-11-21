@@ -1,0 +1,9 @@
+{
+  "name": "personal-rewind",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Stand-alone, festive year-in-review viewer for Trakt My Year JSON exports.",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  }
+}

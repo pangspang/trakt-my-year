@@ -1,0 +1,203 @@
+{
+  "format": "personal-rewind",
+  "schemaVersion": 1,
+  "year": 2026,
+  "mediaType": "series",
+  "timeZone": "Europe/Amsterdam",
+  "generatedAt": "2026-12-21T09:00:00+00:00",
+  "totalCount": 12,
+  "titles": [
+    {
+      "traktId": 5000,
+      "title": "Cosmic Diner",
+      "year": 2015,
+      "watchedAt": "2026-11-02T19:15:00.000Z",
+      "ratedAt": "2026-11-02T20:15:00.000Z",
+      "rating": 10,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5000",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0005000",
+        "tmdb": 5000,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5001,
+      "title": "The Frost Files",
+      "year": 2022,
+      "watchedAt": "2026-10-12T05:15:00.000Z",
+      "ratedAt": "2026-10-12T06:15:00.000Z",
+      "rating": 9,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5001",
+      "overview": "Two strangers share one impossible night in a city that never quite sleeps.",
+      "ids": {
+        "imdb": "tt0005001",
+        "tmdb": 5001,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5002,
+      "title": "Lanterns",
+      "year": 2019,
+      "watchedAt": "2026-03-11T19:15:00.000Z",
+      "ratedAt": "2026-03-11T20:15:00.000Z",
+      "rating": 7,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5002",
+      "overview": "A slow-burn mystery with sharp dialogue and a soundtrack worth replaying.",
+      "ids": {
+        "imdb": "tt0005002",
+        "tmdb": 5002,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5003,
+      "title": "Harbor Lights",
+      "year": 2023,
+      "watchedAt": "2026-09-10T15:15:00.000Z",
+      "ratedAt": "2026-09-10T16:15:00.000Z",
+      "rating": 6,
+      "posterUrl": "https://example.invalid/missing-poster.jpg",
+      "traktUrl": "https://trakt.tv/shows/mock-5003",
+      "overview": null,
+      "ids": {
+        "imdb": "tt0005003",
+        "tmdb": 5003,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5004,
+      "title": "Detective Pine",
+      "year": 2024,
+      "watchedAt": "2026-12-27T13:15:00.000Z",
+      "ratedAt": "2026-12-27T14:15:00.000Z",
+      "rating": 10,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5004",
+      "overview": "An unexpectedly warm story about found family, bad weather, and good coffee.",
+      "ids": {
+        "imdb": "tt0005004",
+        "tmdb": 5004,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5005,
+      "title": "Moonlit Bakery",
+      "year": 2015,
+      "watchedAt": "2026-08-04T10:15:00.000Z",
+      "ratedAt": "2026-08-04T11:15:00.000Z",
+      "rating": 9,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5005",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0005005",
+        "tmdb": 5005,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5006,
+      "title": "Signal Lost",
+      "year": 2019,
+      "watchedAt": "2026-06-06T09:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5006",
+      "overview": "Two strangers share one impossible night in a city that never quite sleeps.",
+      "ids": {
+        "imdb": "tt0005006",
+        "tmdb": 5006,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5007,
+      "title": "The Velvet Room",
+      "year": 2017,
+      "watchedAt": "2026-07-16T11:15:00.000Z",
+      "ratedAt": "2026-07-16T12:15:00.000Z",
+      "rating": 7,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5007",
+      "overview": "A slow-burn mystery with sharp dialogue and a soundtrack worth replaying.",
+      "ids": {
+        "imdb": "tt0005007",
+        "tmdb": 5007,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5008,
+      "title": "Northern Echo",
+      "year": 2018,
+      "watchedAt": "2026-01-09T11:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5008",
+      "overview": null,
+      "ids": {
+        "imdb": "tt0005008",
+        "tmdb": 5008,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5009,
+      "title": "Parallel Lines",
+      "year": 2017,
+      "watchedAt": "2026-04-07T14:15:00.000Z",
+      "ratedAt": "2026-04-07T15:15:00.000Z",
+      "rating": 5,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5009",
+      "overview": "An unexpectedly warm story about found family, bad weather, and good coffee.",
+      "ids": {
+        "imdb": "tt0005009",
+        "tmdb": 5009,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5010,
+      "title": "Tinsel Town Noir",
+      "year": 2026,
+      "watchedAt": "2026-10-25T20:15:00.000Z",
+      "ratedAt": "2026-10-25T21:15:00.000Z",
+      "rating": 10,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5010",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0005010",
+        "tmdb": 5010,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 5011,
+      "title": "Arctic Postcards",
+      "year": 2025,
+      "watchedAt": "2026-10-17T15:15:00.000Z",
+      "ratedAt": "2026-10-17T16:15:00.000Z",
+      "rating": 5,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-5011",
+      "overview": "Two strangers share one impossible night in a city that never quite sleeps.",
+      "ids": {
+        "imdb": "tt0005011",
+        "tmdb": 5011,
+        "tvdb": null
+      }
+    }
+  ]
+}

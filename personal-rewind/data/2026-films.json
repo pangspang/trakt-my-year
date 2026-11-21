@@ -1,0 +1,411 @@
+{
+  "format": "personal-rewind",
+  "schemaVersion": 1,
+  "year": 2026,
+  "mediaType": "film",
+  "timeZone": "Europe/Amsterdam",
+  "generatedAt": "2026-12-21T09:00:00+00:00",
+  "totalCount": 25,
+  "titles": [
+    {
+      "traktId": 1000,
+      "title": "Neon Harbor",
+      "year": 2018,
+      "watchedAt": "2026-01-25T06:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1000",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0001000",
+        "tmdb": 1000,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1001,
+      "title": "The Last Lighthouse",
+      "year": 2018,
+      "watchedAt": "2026-07-09T16:15:00.000Z",
+      "ratedAt": "2026-07-09T17:15:00.000Z",
+      "rating": 8,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1001",
+      "overview": "Two strangers share one impossible night in a city that never quite sleeps.",
+      "ids": {
+        "imdb": "tt0001001",
+        "tmdb": 1001,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1002,
+      "title": "Midnight Cartographers",
+      "year": 2018,
+      "watchedAt": "2026-08-23T05:15:00.000Z",
+      "ratedAt": "2026-08-23T06:15:00.000Z",
+      "rating": 9,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1002",
+      "overview": "A slow-burn mystery with sharp dialogue and a soundtrack worth replaying.",
+      "ids": {
+        "imdb": "tt0001002",
+        "tmdb": 1002,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1003,
+      "title": "Paper Moons",
+      "year": 2025,
+      "watchedAt": "2026-01-19T10:15:00.000Z",
+      "ratedAt": "2026-01-19T11:15:00.000Z",
+      "rating": 9,
+      "posterUrl": "https://example.invalid/missing-poster.jpg",
+      "traktUrl": "https://trakt.tv/movies/mock-1003",
+      "overview": null,
+      "ids": {
+        "imdb": "tt0001003",
+        "tmdb": 1003,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1004,
+      "title": "Glass Orchard",
+      "year": 2016,
+      "watchedAt": "2026-07-25T15:15:00.000Z",
+      "ratedAt": "2026-07-25T16:15:00.000Z",
+      "rating": 8,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1004",
+      "overview": "An unexpectedly warm story about found family, bad weather, and good coffee.",
+      "ids": {
+        "imdb": "tt0001004",
+        "tmdb": 1004,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1005,
+      "title": "Velvet Thunder",
+      "year": 2025,
+      "watchedAt": "2026-11-11T07:15:00.000Z",
+      "ratedAt": "2026-11-11T08:15:00.000Z",
+      "rating": 7,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1005",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0001005",
+        "tmdb": 1005,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1006,
+      "title": "Silent Carnival",
+      "year": 2018,
+      "watchedAt": "2026-04-12T06:15:00.000Z",
+      "ratedAt": "2026-04-12T07:15:00.000Z",
+      "rating": 8,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1006",
+      "overview": "Two strangers share one impossible night in a city that never quite sleeps.",
+      "ids": {
+        "imdb": "tt0001006",
+        "tmdb": 1006,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1007,
+      "title": "Orbit of Small Things",
+      "year": 2021,
+      "watchedAt": "2026-11-02T06:15:00.000Z",
+      "ratedAt": "2026-11-02T07:15:00.000Z",
+      "rating": 8,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1007",
+      "overview": "A slow-burn mystery with sharp dialogue and a soundtrack worth replaying.",
+      "ids": {
+        "imdb": "tt0001007",
+        "tmdb": 1007,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1008,
+      "title": "The Salt Road",
+      "year": 2019,
+      "watchedAt": "2026-03-25T01:15:00.000Z",
+      "ratedAt": "2026-03-25T02:15:00.000Z",
+      "rating": 7,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1008",
+      "overview": null,
+      "ids": {
+        "imdb": "tt0001008",
+        "tmdb": 1008,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1009,
+      "title": "Echoes in Amber",
+      "year": 2022,
+      "watchedAt": "2026-12-14T03:15:00.000Z",
+      "ratedAt": "2026-12-14T04:15:00.000Z",
+      "rating": 6,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1009",
+      "overview": "An unexpectedly warm story about found family, bad weather, and good coffee.",
+      "ids": {
+        "imdb": "tt0001009",
+        "tmdb": 1009,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1010,
+      "title": "Wolves of Winter Street",
+      "year": 2016,
+      "watchedAt": "2026-06-09T11:15:00.000Z",
+      "ratedAt": "2026-06-09T12:15:00.000Z",
+      "rating": 6,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1010",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0001010",
+        "tmdb": 1010,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1011,
+      "title": "Starlight Arcade",
+      "year": 2020,
+      "watchedAt": "2026-06-24T13:15:00.000Z",
+      "ratedAt": "2026-06-24T14:15:00.000Z",
+      "rating": 8,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1011",
+      "overview": "Two strangers share one impossible night in a city that never quite sleeps.",
+      "ids": {
+        "imdb": "tt0001011",
+        "tmdb": 1011,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1012,
+      "title": "A Quiet Revolution",
+      "year": 2019,
+      "watchedAt": "2026-09-26T08:15:00.000Z",
+      "ratedAt": "2026-09-26T09:15:00.000Z",
+      "rating": 6,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1012",
+      "overview": "A slow-burn mystery with sharp dialogue and a soundtrack worth replaying.",
+      "ids": {
+        "imdb": "tt0001012",
+        "tmdb": 1012,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1013,
+      "title": "Copper Sky",
+      "year": 2025,
+      "watchedAt": "2026-05-09T08:15:00.000Z",
+      "ratedAt": "2026-05-09T09:15:00.000Z",
+      "rating": 9,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1013",
+      "overview": null,
+      "ids": {
+        "imdb": "tt0001013",
+        "tmdb": 1013,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1014,
+      "title": "The Clockmaker's Daughter",
+      "year": 2026,
+      "watchedAt": "2026-10-03T08:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1014",
+      "overview": "An unexpectedly warm story about found family, bad weather, and good coffee.",
+      "ids": {
+        "imdb": "tt0001014",
+        "tmdb": 1014,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1015,
+      "title": "Hollow Crown Heist",
+      "year": 2021,
+      "watchedAt": "2026-12-06T13:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1015",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0001015",
+        "tmdb": 1015,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1016,
+      "title": "Fireflies at Noon",
+      "year": 2016,
+      "watchedAt": "2026-08-04T20:15:00.000Z",
+      "ratedAt": "2026-08-04T21:15:00.000Z",
+      "rating": 9,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1016",
+      "overview": "Two strangers share one impossible night in a city that never quite sleeps.",
+      "ids": {
+        "imdb": "tt0001016",
+        "tmdb": 1016,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1017,
+      "title": "Blue Hour Blues",
+      "year": 2024,
+      "watchedAt": "2026-11-21T06:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1017",
+      "overview": "A slow-burn mystery with sharp dialogue and a soundtrack worth replaying.",
+      "ids": {
+        "imdb": "tt0001017",
+        "tmdb": 1017,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1018,
+      "title": "Ghost Train to Nowhere",
+      "year": 2018,
+      "watchedAt": "2026-01-01T13:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1018",
+      "overview": null,
+      "ids": {
+        "imdb": "tt0001018",
+        "tmdb": 1018,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1019,
+      "title": "The Great Snowglobe Caper",
+      "year": 2022,
+      "watchedAt": "2026-06-19T05:15:00.000Z",
+      "ratedAt": "2026-06-19T06:15:00.000Z",
+      "rating": 6,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1019",
+      "overview": "An unexpectedly warm story about found family, bad weather, and good coffee.",
+      "ids": {
+        "imdb": "tt0001019",
+        "tmdb": 1019,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1020,
+      "title": "Café Éclair",
+      "year": 2016,
+      "watchedAt": "2026-11-04T10:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1020",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0001020",
+        "tmdb": 1020,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1021,
+      "title": "東京の夜",
+      "year": 2015,
+      "watchedAt": "2026-08-25T00:15:00.000Z",
+      "ratedAt": "2026-08-25T01:15:00.000Z",
+      "rating": 6,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1021",
+      "overview": "Two strangers share one impossible night in a city that never quite sleeps.",
+      "ids": {
+        "imdb": "tt0001021",
+        "tmdb": 1021,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1022,
+      "title": "<script>alert(1)</script> Premiere",
+      "year": 2024,
+      "watchedAt": "2026-07-19T05:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1022",
+      "overview": "A slow-burn mystery with sharp dialogue and a soundtrack worth replaying.",
+      "ids": {
+        "imdb": "tt0001022",
+        "tmdb": 1022,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1023,
+      "title": "Rated But Never Watched",
+      "year": 2021,
+      "watchedAt": null,
+      "ratedAt": "2026-12-20T18:00:00+00:00",
+      "rating": 9,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1023",
+      "overview": null,
+      "ids": {
+        "imdb": "tt0001023",
+        "tmdb": 1023,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 1024,
+      "title": "No Rating, Just Vibes",
+      "year": 2018,
+      "watchedAt": "2026-01-03T20:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/movies/mock-1024",
+      "overview": null,
+      "ids": {
+        "imdb": "tt0001024",
+        "tmdb": 1024,
+        "tvdb": null
+      }
+    }
+  ]
+}

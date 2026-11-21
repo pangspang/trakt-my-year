@@ -403,6 +403,77 @@ be resolved and verified before populating currently blank fields:
 blanks/losses, unchanged existing CSV behavior, passing automated/security gates, and a successful
 manual Simkl import. Do not claim a complete watch-history migration from this CSV format.
 
+### Slice 3b - Personal Rewind (stand-alone year overview)
+
+**Status:** implemented (export endpoint, `personal-rewind/` viewer, mock data, automated tests).
+Manual verification with a real Trakt export is pending.
+
+**Goal:** provide a static, independently hostable year-in-review site that reads JSON exports from
+the main application. It must not require the API, a .NET runtime, Trakt credentials, a database,
+or a frontend build step at viewing time.
+
+**Name:** Personal Rewind - "Your year, replayed."
+
+#### Project boundary and packaging
+
+- Create a separate top-level `personal-rewind/` project folder, outside `src/` and the API's
+  `wwwroot/`. Personal Rewind is a supported companion project in this repository, not part of
+  the Trakt My Year application or its .NET solution.
+- Give the project its own static entry point, styles, JavaScript, synthetic example data, and
+  README covering its identity, supported JSON schema, local preview, and independent hosting.
+  Copying this folder must be sufficient to deploy the viewer on a simple static webserver.
+- Keep JSON export endpoints and download controls in the main application. The versioned JSON
+  file contract is the only integration boundary; Personal Rewind must not reference application
+  code, call the running API, or depend on its hosted assets.
+- Link to Personal Rewind from the repository README as an optional, separately hosted companion.
+  Make the separation clear in both documentation and the viewer's branding.
+
+#### JSON exports
+
+- Add complete, unpaged JSON downloads for movies and shows, named like
+  `2026-films.json` and `2026-series.json`.
+- Include a schema version, review year, generation timestamp, timezone, media type, and all
+  matching `YearReviewItem` fields: title, release year, personal rating, watched/rated dates,
+  poster URL, Trakt URL, overview, and available identifiers. Missing optional values remain
+  null; do not derive unsupported watch-time or episode statistics.
+- Use the existing dashboard/year-review dataset and semantics. Keep the history-based Simkl
+  export separate; do not silently change year membership or rating behavior in this slice.
+- Document that the existing review may omit an earlier-year watch when a title is rewatched in a
+  later year.
+
+#### Static website
+
+- Implement plain HTML, CSS, and JavaScript with no framework or build step.
+- Support a same-origin manifest listing available JSON files; do not depend on directory
+  listing. Also allow a user to select multiple local JSON files for an unhosted preview.
+- Read year and media type from validated file contents rather than inferring them from filenames.
+  Support multiple years with year selection and All / Films / Series views. Report duplicate
+  files for the same year and media type instead of silently double-counting them.
+- Present a festive, cinematic year-in-review: responsive poster gallery, summary metrics,
+  highest-personal-rating highlights, search, sorting, and title details with synopsis and Trakt
+  link. Use tasteful entrance animations and celebratory effects, not distracting continuous
+  animation. Respect keyboard access and reduced-motion preferences; handle missing posters and
+  ratings gracefully.
+- Provide clear loading, empty, malformed-file, and per-file unavailable states. Render imported
+  text safely and validate external links. Do not include credentials, analytics, account identity,
+  or automatic uploads.
+- Document that hosted JSON is publicly downloadable unless the webserver restricts access and
+  that remotely hosted posters require internet access.
+
+#### Validation and exit gate
+
+- Test JSON contract fields, complete exports independent of table pagination, null handling,
+  multi-year and media-type selection, duplicate detection, invalid JSON, and unchanged CSV
+  behavior.
+- Validate the site on a basic static webserver and check responsive layout, keyboard access, and
+  reduced-motion behavior.
+- Document the export, manifest update, file placement, and static hosting workflow.
+
+**Exit gate:** versioned exports and static site work together from local files and a simple
+webserver; malformed/duplicate inputs are clearly handled; existing export behavior is unchanged;
+the Personal Rewind folder deploys independently of the main application; automated tests pass
+and privacy/access limitations are documented.
+
 ### Slice 4 - SQL-ready persistence (next)
 
 - Introduce a persistence port and SQL Server implementation behind the existing application
@@ -413,9 +484,10 @@ manual Simkl import. Do not claim a complete watch-history migration from this C
 **Exit gate:** switching persistence implementations does not alter the public API contract or core
   aggregation tests.
 
-### Slice 5 - Separate frontend (deferred)
+### Slice 5 - API-connected frontend (deferred)
 
-- Build a separate frontend against the versioned API.
+- Build a separate frontend against the versioned API; this is distinct from the static,
+  file-fed overview in Slice 3b.
 - Include year selection, overview metrics, movie/show tabs, sortable tables, title details, and
   presentation-friendly top lists.
 - Add loading, empty, stale-cache, auth-required, rate-limit, and upstream-error states.

@@ -1,0 +1,9 @@
+{
+  "name": "Alex",
+  "files": [
+    "data/2026-films.json",
+    "data/2026-series.json",
+    "data/2025-films.json",
+    "data/2025-series.json"
+  ]
+}

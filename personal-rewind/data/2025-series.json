@@ -1,0 +1,107 @@
+{
+  "format": "personal-rewind",
+  "schemaVersion": 1,
+  "year": 2025,
+  "mediaType": "series",
+  "timeZone": "Europe/Amsterdam",
+  "generatedAt": "2025-12-21T09:00:00+00:00",
+  "totalCount": 6,
+  "titles": [
+    {
+      "traktId": 6000,
+      "title": "Cosmic Diner",
+      "year": 2017,
+      "watchedAt": "2025-10-03T20:15:00.000Z",
+      "ratedAt": "2025-10-03T21:15:00.000Z",
+      "rating": 8,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-6000",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0006000",
+        "tmdb": 6000,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 6001,
+      "title": "The Frost Files",
+      "year": 2022,
+      "watchedAt": "2025-07-12T19:15:00.000Z",
+      "ratedAt": "2025-07-12T20:15:00.000Z",
+      "rating": 9,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-6001",
+      "overview": "Two strangers share one impossible night in a city that never quite sleeps.",
+      "ids": {
+        "imdb": "tt0006001",
+        "tmdb": 6001,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 6002,
+      "title": "Lanterns",
+      "year": 2018,
+      "watchedAt": "2025-09-12T08:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-6002",
+      "overview": "A slow-burn mystery with sharp dialogue and a soundtrack worth replaying.",
+      "ids": {
+        "imdb": "tt0006002",
+        "tmdb": 6002,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 6003,
+      "title": "Harbor Lights",
+      "year": 2015,
+      "watchedAt": "2025-03-25T18:15:00.000Z",
+      "ratedAt": "2025-03-25T19:15:00.000Z",
+      "rating": 8,
+      "posterUrl": "https://example.invalid/missing-poster.jpg",
+      "traktUrl": "https://trakt.tv/shows/mock-6003",
+      "overview": null,
+      "ids": {
+        "imdb": "tt0006003",
+        "tmdb": 6003,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 6004,
+      "title": "Detective Pine",
+      "year": 2024,
+      "watchedAt": "2025-02-09T20:15:00.000Z",
+      "ratedAt": null,
+      "rating": null,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-6004",
+      "overview": "An unexpectedly warm story about found family, bad weather, and good coffee.",
+      "ids": {
+        "imdb": "tt0006004",
+        "tmdb": 6004,
+        "tvdb": null
+      }
+    },
+    {
+      "traktId": 6005,
+      "title": "Moonlit Bakery",
+      "year": 2023,
+      "watchedAt": "2025-05-01T15:15:00.000Z",
+      "ratedAt": "2025-05-01T16:15:00.000Z",
+      "rating": 6,
+      "posterUrl": null,
+      "traktUrl": "https://trakt.tv/shows/mock-6005",
+      "overview": "A winter-soaked adventure where nothing goes quite to plan, and everyone is better for it.",
+      "ids": {
+        "imdb": "tt0006005",
+        "tmdb": 6005,
+        "tvdb": null
+      }
+    }
+  ]
+}

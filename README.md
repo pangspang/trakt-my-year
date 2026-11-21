@@ -83,6 +83,8 @@ GET /api/v1/year-reviews/2026/show/top?limit=10
 GET /api/v1/year-reviews/2026/movie/export.csv?sort=rating&direction=desc
 GET /api/v1/year-reviews/2026/movie/export.csv?format=simkl
 GET /api/v1/year-reviews/2026/show/export.csv?format=simkl
+GET /api/v1/year-reviews/2026/movie/export.json
+GET /api/v1/year-reviews/2026/show/export.json
 DELETE /api/v1/auth/trakt
 ```
 
@@ -90,6 +92,14 @@ The same requests are available in [TraktMyYear.Api.http](src/TraktMyYear.Api/Tr
 The first year request imports watched history and ratings into an in-memory snapshot. Snapshots
 expire after 30 minutes with a 10-minute sliding expiration; refresh explicitly rebuilds the year.
 Default CSV exports contain the complete cached collection for the selected media type.
+
+## Personal Rewind JSON export
+
+**Rewind JSON** in the dashboard (or `export.json`) downloads a versioned file such as
+`2026-films.json` / `2026-series.json` from the cached dashboard dataset. These files feed
+[Personal Rewind](personal-rewind/README.md), a supported stand-alone, festive year-in-review
+viewer that is not part of this application and can be hosted on any static webserver. Treat the
+files as private data until you decide to host them.
 
 ## Simkl CSV export
 

@@ -60,6 +60,48 @@ public sealed class SimklExportEndpointTests
     }
 
     [Fact]
+    public async Task RewindJsonExportsCompleteVersionedFileAndLeavesCsvUnchanged()
+    {
+        await using var host = await TestHost.StartAsync();
+        using var response = await host.Client.GetAsync("/api/v1/year-reviews/2026/movie/export.json?pageSize=1");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("2026-films.json", response.Content.Headers.ContentDisposition?.FileNameStar);
+        Assert.True(response.Headers.CacheControl?.NoStore);
+
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var root = document.RootElement;
+        Assert.Equal("personal-rewind", root.GetProperty("format").GetString());
+        Assert.Equal(1, root.GetProperty("schemaVersion").GetInt32());
+        Assert.Equal(2026, root.GetProperty("year").GetInt32());
+        Assert.Equal("film", root.GetProperty("mediaType").GetString());
+        Assert.Equal("UTC", root.GetProperty("timeZone").GetString());
+        Assert.Equal(root.GetProperty("totalCount").GetInt32(), root.GetProperty("titles").GetArrayLength());
+        var title = root.GetProperty("titles")[0];
+        Assert.Equal("Example", title.GetProperty("title").GetString());
+        Assert.Equal(JsonValueKind.Null, title.GetProperty("rating").ValueKind);
+        Assert.Equal(JsonValueKind.Null, title.GetProperty("ratedAt").ValueKind);
+
+        using var series = await host.Client.GetAsync("/api/v1/year-reviews/2026/show/export.json");
+        Assert.Equal("2026-series.json", series.Content.Headers.ContentDisposition?.FileNameStar);
+        using var seriesDocument = JsonDocument.Parse(await series.Content.ReadAsStringAsync());
+        Assert.Equal("series", seriesDocument.RootElement.GetProperty("mediaType").GetString());
+        Assert.StartsWith("mediaType,traktId,", await host.Client.GetStringAsync("/api/v1/year-reviews/2026/movie/export.csv"));
+    }
+
+    [Theory]
+    [InlineData("2026/99/export.json")]
+    [InlineData("2026/movie/export.json?sort=99")]
+    [InlineData("1899/movie/export.json")]
+    public async Task RewindJsonRejectsInvalidParameters(string route)
+    {
+        await using var host = await TestHost.StartAsync();
+        using var response = await host.Client.GetAsync($"/api/v1/year-reviews/{route}");
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
     public async Task AuthenticationRoutesPreserveStatusPkceAndCallbackValidation()
     {
         await using var host = await TestHost.StartAsync();

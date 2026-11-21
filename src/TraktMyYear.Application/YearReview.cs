@@ -163,6 +163,7 @@ public interface IYearReviewService
         int limit,
         decimal? minimumRating,
         CancellationToken cancellationToken = default);
+    Task<YearReviewSnapshot> GetSnapshotAsync(int year, CancellationToken cancellationToken = default);
     Task RefreshAsync(int year, CancellationToken cancellationToken = default);
 }
 
@@ -278,7 +279,7 @@ public sealed class YearReviewService(
         await GetSnapshotAsync(year, cancellationToken);
     }
 
-    private async Task<YearReviewSnapshot> GetSnapshotAsync(int year, CancellationToken cancellationToken)
+    public async Task<YearReviewSnapshot> GetSnapshotAsync(int year, CancellationToken cancellationToken = default)
     {
         if (year is < 1900 or > 2100)
         {

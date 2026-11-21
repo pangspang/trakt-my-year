@@ -1,16 +1,23 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
 using TraktMyYear.Application;
+using TraktMyYear.Infrastructure;
 
 namespace TraktMyYear.Api.Controllers;
 
 [ApiController]
 [Route("api/v1/year-reviews")]
-public sealed class YearReviewsController(IYearReviewService yearReviewService, SimklExportService simklExportService) : ControllerBase
+public sealed class YearReviewsController(
+    IYearReviewService yearReviewService,
+    SimklExportService simklExportService,
+    IOptions<TraktOptions> traktOptions) : ControllerBase
 {
+    private static readonly JsonSerializerOptions RewindJson = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
     /// <summary>Returns the title counts for a calendar year.</summary>
     [HttpGet("{year:int}")]
     public async Task<ActionResult<YearReviewOverview>> GetOverview(
@@ -126,6 +133,51 @@ public sealed class YearReviewsController(IYearReviewService yearReviewService, 
             }
 
             return File(Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", $"trakt-my-year-{year}-{mediaType.ToString().ToLowerInvariant()}.csv");
+        }
+        catch (Exception exception) when (exception is ArgumentOutOfRangeException or TraktAccountNotConnectedException or InvalidOperationException or HttpRequestException or JsonException)
+        {
+            var status = exception switch
+            {
+                ArgumentOutOfRangeException => StatusCodes.Status400BadRequest,
+                TraktAccountNotConnectedException => StatusCodes.Status409Conflict,
+                _ => StatusCodes.Status502BadGateway
+            };
+            return Problem(title: "The year review could not be exported.",
+                detail: status == StatusCodes.Status400BadRequest ? exception.Message : "The upstream data could not be exported safely. Reconnect or try again later.",
+                statusCode: status);
+        }
+    }
+
+    /// <summary>Exports all titles of one media type as a Personal Rewind JSON file.</summary>
+    /// <remarks>
+    /// Uses the cached year review (same data as the dashboard). The file is the only
+    /// integration boundary with the stand-alone Personal Rewind viewer and contains personal
+    /// viewing data: host it only where you are comfortable sharing it.
+    /// </remarks>
+    [HttpGet("{year:int}/{mediaType}/export.json")]
+    [ProducesResponseType<RewindExportFile>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
+    public async Task<IActionResult> ExportRewind(
+        int year,
+        MediaType mediaType,
+        [FromQuery] YearReviewSort sort = YearReviewSort.Title,
+        [FromQuery] SortDirection direction = SortDirection.Asc,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (!Enum.IsDefined(mediaType) || !Enum.IsDefined(sort) || !Enum.IsDefined(direction))
+            {
+                return Problem(title: "Invalid export parameters.", detail: "Use a valid media type, sort, and direction.", statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            var snapshot = await yearReviewService.GetSnapshotAsync(year, cancellationToken);
+            var export = RewindExportFile.Create(snapshot, mediaType, traktOptions.Value.Timezone, sort, direction);
+            Response.Headers.CacheControl = "no-store";
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(export, RewindJson);
+            return File(bytes, "application/json", RewindExportFile.FileName(year, mediaType));
         }
         catch (Exception exception) when (exception is ArgumentOutOfRangeException or TraktAccountNotConnectedException or InvalidOperationException or HttpRequestException or JsonException)
         {

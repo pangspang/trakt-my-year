@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: http: data:; style-src 'self'; script-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Personal Rewind - Your year, replayed</title>
+  <link rel="stylesheet" href="css/rewind.css">
+</head>
+<body>
+  <div class="sky" aria-hidden="true"><i class="aurora a1"></i><i class="aurora a2"></i><i class="aurora a3"></i></div>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <main>
+    <a class="btn primary project-link" href="https://github.com/pangspang/trakt-my-year" target="_blank" rel="noopener noreferrer">View on GitHub: pangspang/trakt-my-year</a>
+    <header class="hero">
+      <p class="eyebrow" id="eyebrow">Personal Rewind</p>
+      <h1><span class="hero-year" id="heroYear">Your</span> <span class="hero-word">Rewind</span></h1>
+      <p class="tagline">Your year, replayed.</p>
+      <nav id="yearNav" class="year-nav" aria-label="Choose a year" hidden></nav>
+    </header>
+
+    <section id="loader" class="panel loader" aria-labelledby="loaderTitle" hidden>
+      <h2 id="loaderTitle">Your data</h2>
+      <p id="loaderNote" class="note" role="status"></p>
+      <ul id="fileList" class="file-list" aria-live="polite"></ul>
+      <label id="pickerWrap" class="file-button" hidden>
+        <input id="filePicker" type="file" accept=".json,application/json" multiple>
+        <span>Choose JSON files</span>
+      </label>
+    </section>
+
+    <section id="content" hidden>
+      <section class="metrics" aria-label="Year in numbers" id="metrics"></section>
+
+      <section class="panel" aria-labelledby="monthsTitle">
+        <h2 id="monthsTitle">Your year, month by month</h2>
+        <div id="months" class="months" role="img" aria-label="Titles watched per month"></div>
+        <p class="legend"><i class="dot film"></i> Films <i class="dot series"></i> Series</p>
+      </section>
+
+      <section class="collection" aria-labelledby="collectionTitle">
+        <div class="collection-head">
+          <h2 id="collectionTitle">Everything you watched</h2>
+          <input id="search" type="search" placeholder="Search titles" aria-label="Search titles" autocomplete="off">
+          <select id="sort" aria-label="Sort titles">
+            <option value="rating" selected>Highest rated</option>
+            <option value="title">Title A-Z</option>
+            <option value="watchedAt">Recently watched</option>
+            <option value="ratedAt">Recently rated</option>
+          </select>
+        </div>
+        <div class="lists">
+          <section class="list-col" aria-labelledby="filmsTitle">
+            <h3 id="filmsTitle"></h3>
+            <ol id="filmList" class="rows"></ol>
+          </section>
+          <section class="list-col" aria-labelledby="seriesTitle">
+            <h3 id="seriesTitle"></h3>
+            <ol id="seriesList" class="rows"></ol>
+          </section>
+        </div>
+      </section>
+    </section>
+
+    <footer class="foot">
+      <p>Personal Rewind is a stand-alone companion to Trakt My Year. It reads only the JSON files in its <code>data</code> folder and sends nothing anywhere.
+        Hosted JSON files are public to anyone with the link, and poster images load from their original servers.</p>
+    </footer>
+  </main>
+
+  <dialog id="detail" aria-labelledby="detailTitle"></dialog>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

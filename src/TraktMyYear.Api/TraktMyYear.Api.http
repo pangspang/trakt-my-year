@@ -49,6 +49,11 @@ Accept: text/csv
 
 POST {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/refresh
 
+### Personal Rewind JSON export (feeds the stand-alone personal-rewind viewer)
+
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/movie/export.json
+Accept: application/json
+
 ### Simkl movie export (large exports return a ZIP containing CSV parts)
 
 GET {{TraktMyYear.Api_HostAddress}}/api/v1/year-reviews/2026/movie/export.csv?format=simkl&sort=title&direction=asc
