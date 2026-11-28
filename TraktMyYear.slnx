@@ -2,7 +2,6 @@
   <Folder Name="/src/">
     <Project Path="src/TraktMyYear.Api/TraktMyYear.Api.csproj" />
     <Project Path="src/TraktMyYear.Application/TraktMyYear.Application.csproj" />
-    <Project Path="src/TraktMyYear.Domain/TraktMyYear.Domain.csproj" />
     <Project Path="src/TraktMyYear.Infrastructure/TraktMyYear.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">

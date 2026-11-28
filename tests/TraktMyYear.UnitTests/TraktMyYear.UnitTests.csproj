@@ -20,7 +20,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TraktMyYear.Application\TraktMyYear.Application.csproj" />
-    <ProjectReference Include="..\..\src\TraktMyYear.Domain\TraktMyYear.Domain.csproj" />
     <ProjectReference Include="..\..\src\TraktMyYear.Infrastructure\TraktMyYear.Infrastructure.csproj" />
   </ItemGroup>
 

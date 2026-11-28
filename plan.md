@@ -20,7 +20,7 @@ The first slice is API-first. A browser frontend is a separate slice built on th
 
 The repository now contains a working local vertical slice rather than only a proposal:
 
-- The .NET 11 solution has API, application, domain, infrastructure, unit-test, and integration-test projects.
+- The .NET 11 solution has API, application, infrastructure, unit-test, and integration-test projects.
 - Trakt OAuth authorization-code login uses PKCE, validates OAuth state, and supports connect, status,
   callback, and disconnect operations.
 - The API imports watched movies and shows, maps ratings and timestamps, excludes episode records,
@@ -95,20 +95,18 @@ Current solution layout:
 ```text
 src/
   TraktMyYear.Api/             HTTP endpoints, auth flow, Swagger, exception handling
-  TraktMyYear.Application/     use cases, DTOs, validation, sorting, aggregation
-  TraktMyYear.Domain/          title/year models and business rules
+    wwwroot/                  static browser dashboard
+  TraktMyYear.Application/     use cases, title/year models, validation, sorting, aggregation
   TraktMyYear.Infrastructure/  Trakt client, OAuth, caching, serialization, clock
 tests/
   TraktMyYear.UnitTests/
   TraktMyYear.IntegrationTests/
-  TraktMyYear.ContractTests/
-  src/TraktMyYear.Api/wwwroot/  static browser dashboard
 ```
 
-Keep the application and domain layers independent of Trakt's response JSON and of the cache
+Keep the application layer independent of Trakt's response JSON and of the cache
 implementation. Reuse the existing `ITraktGateway`, `IYearReviewStore`, and `ITokenStore` ports,
 extending them with explicit user/account ownership where needed. Keep HTTP session resolution
-at the API boundary rather than introducing `HttpContext` into the application or domain.
+at the API boundary rather than introducing `HttpContext` into the application.
 This makes the later SQL version an implementation change rather than a rewrite of endpoint behavior.
 
 ## 4. Trakt Integration

@@ -3,7 +3,6 @@ WORKDIR /source
 
 COPY src/TraktMyYear.Api/TraktMyYear.Api.csproj src/TraktMyYear.Api/
 COPY src/TraktMyYear.Application/TraktMyYear.Application.csproj src/TraktMyYear.Application/
-COPY src/TraktMyYear.Domain/TraktMyYear.Domain.csproj src/TraktMyYear.Domain/
 COPY src/TraktMyYear.Infrastructure/TraktMyYear.Infrastructure.csproj src/TraktMyYear.Infrastructure/
 RUN dotnet restore src/TraktMyYear.Api/TraktMyYear.Api.csproj
 
