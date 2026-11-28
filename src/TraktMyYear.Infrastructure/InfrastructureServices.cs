@@ -6,7 +6,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using System.Net.Http.Headers;
+using System.Text.Json;
 using TraktMyYear.Application;
+using TraktMyYear.Infrastructure.Authentication;
 
 namespace TraktMyYear.Infrastructure;
 
@@ -18,7 +20,7 @@ public sealed class TraktOptions
     public string CallbackUrl { get; set; } = string.Empty;
     public string Timezone { get; set; } = "UTC";
     public string ApiBaseUrl { get; set; } = "https://api.trakt.tv";
-    public string Username { get; set; } = "me";
+    public bool AllowInsecureLoopback { get; set; }
     public string AuthorizationEndpoint { get; set; } = "https://auth.trakt.tv/oauth/authorize";
     public string TokenEndpoint { get; set; } = "https://auth.trakt.tv/oauth/token";
 
@@ -39,10 +41,17 @@ public sealed class TraktOptions
 public sealed class InMemoryOAuthStateStore : IOAuthStateStore
 {
     private static readonly TimeSpan StateLifetime = TimeSpan.FromMinutes(10);
-    private readonly ConcurrentDictionary<string, (DateTimeOffset ExpiresAt, string CodeVerifier)> states = new();
+    private readonly TimeProvider clock;
+    private readonly object gate = new();
+    private readonly Dictionary<string, (string BrowserId, DateTimeOffset ExpiresAt, string CodeVerifier, string? OriginatingSessionId)> states = [];
+    private readonly Dictionary<string, string> browserStates = [];
 
-    public OAuthState Create()
+    public InMemoryOAuthStateStore(TimeProvider? timeProvider = null) =>
+        clock = timeProvider ?? TimeProvider.System;
+
+    public OAuthState Create(string browserId, string? originatingSessionId = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(browserId);
         var state = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             .Replace('+', '-')
             .Replace('/', '_')
@@ -51,42 +60,66 @@ public sealed class InMemoryOAuthStateStore : IOAuthStateStore
             .Replace('+', '-')
             .Replace('/', '_')
             .TrimEnd('=');
-        states[state] = (DateTimeOffset.UtcNow.Add(StateLifetime), verifier);
-        return new OAuthState(state, verifier);
-    }
-
-    public bool TryConsume(string state, out string codeVerifier)
-    {
-        codeVerifier = string.Empty;
-        if (!states.TryRemove(state, out var value) || value.ExpiresAt <= DateTimeOffset.UtcNow)
+        lock (gate)
         {
-            return false;
+            CleanupExpiredLocked();
+            if (browserStates.Remove(browserId, out var previous))
+            {
+                states.Remove(previous);
+            }
+
+            if (states.Count >= 100)
+            {
+                throw new InvalidOperationException("Too many pending Trakt login attempts. Try again shortly.");
+            }
+
+            states[state] = (browserId, clock.GetUtcNow().Add(StateLifetime), verifier, originatingSessionId);
+            browserStates[browserId] = state;
         }
 
-        codeVerifier = value.CodeVerifier;
-        return true;
-    }
-}
-
-public sealed class InMemoryTokenStore : ITokenStore
-{
-    private TraktToken? token;
-
-    public bool HasToken => token is not null;
-
-    public Task SaveAsync(TraktToken value, CancellationToken cancellationToken = default)
-    {
-        token = value;
-        return Task.CompletedTask;
+        return new OAuthState(state, verifier, originatingSessionId);
     }
 
-    public Task<TraktToken?> GetAsync(CancellationToken cancellationToken = default) =>
-        Task.FromResult(token);
-
-    public Task ClearAsync(CancellationToken cancellationToken = default)
+    public bool TryConsume(string state, string browserId, out OAuthState oauthState)
     {
-        token = null;
-        return Task.CompletedTask;
+        oauthState = new OAuthState(string.Empty, string.Empty);
+        lock (gate)
+        {
+            CleanupExpiredLocked();
+            if (!states.TryGetValue(state, out var value)
+                || value.BrowserId != browserId
+                || !string.Equals(browserStates.GetValueOrDefault(browserId), state, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            states.Remove(state);
+            browserStates.Remove(browserId);
+            oauthState = new OAuthState(state, value.CodeVerifier, value.OriginatingSessionId);
+            return true;
+        }
+    }
+
+    public void CleanupExpired()
+    {
+        lock (gate)
+        {
+            CleanupExpiredLocked();
+        }
+    }
+
+    private void CleanupExpiredLocked()
+    {
+        var expired = states.Where(pair => pair.Value.ExpiresAt <= clock.GetUtcNow()).Select(pair => pair.Key).ToArray();
+        foreach (var state in expired)
+        {
+            var browser = states[state].BrowserId;
+            states.Remove(state);
+            if (browserStates.TryGetValue(browser, out var current) && current == state)
+            {
+                browserStates.Remove(browser);
+            }
+        }
     }
 }
 
@@ -206,6 +239,49 @@ public sealed class TraktOAuthClient(
             payload.TokenType ?? "bearer");
     }
 
+    public async Task<TraktAccount> GetAccountAsync(TraktToken token, CancellationToken cancellationToken = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/users/settings");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"Trakt account lookup failed with status {(int)response.StatusCode}.");
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+        var root = document.RootElement;
+        var user = root.TryGetProperty("user", out var nestedUser) && nestedUser.ValueKind == JsonValueKind.Object
+            ? nestedUser
+            : root;
+        if (!user.TryGetProperty("ids", out var ids)
+            || !ids.TryGetProperty("uuid", out var uuid)
+            || uuid.ValueKind != JsonValueKind.String
+            || string.IsNullOrWhiteSpace(uuid.GetString()))
+        {
+            throw new InvalidOperationException("Trakt did not return a stable account identifier.");
+        }
+
+        var stableId = uuid.GetString()!;
+        var displayName = user.TryGetProperty("username", out var username) && username.ValueKind == JsonValueKind.String
+            ? username.GetString()
+            : null;
+        if (string.IsNullOrWhiteSpace(displayName)
+            && user.TryGetProperty("name", out var name)
+            && name.ValueKind == JsonValueKind.String)
+        {
+            displayName = name.GetString();
+        }
+
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            displayName = stableId;
+        }
+
+        return new TraktAccount(stableId, displayName);
+    }
+
     private sealed record TokenResponse(
         [property: JsonPropertyName("access_token")] string AccessToken,
         [property: JsonPropertyName("refresh_token")] string RefreshToken,
@@ -266,7 +342,10 @@ public static class InfrastructureServiceCollectionExtensions
                 options.CallbackUrl = Environment.GetEnvironmentVariable("TRAKT_CALLBACK_URL") ?? string.Empty;
                 options.Timezone = Environment.GetEnvironmentVariable("TRAKT_TIMEZONE") ?? "UTC";
                 options.ApiBaseUrl = Environment.GetEnvironmentVariable("TRAKT_API_BASE_URL") ?? "https://api.trakt.tv";
-                options.Username = Environment.GetEnvironmentVariable("TRAKT_TEST_ACCOUNT") ?? "me";
+                options.AllowInsecureLoopback = string.Equals(
+                    Environment.GetEnvironmentVariable("TRAKT_ALLOW_INSECURE_LOOPBACK"),
+                    "true",
+                    StringComparison.OrdinalIgnoreCase);
             })
             .Validate(options =>
             {
@@ -276,8 +355,13 @@ public static class InfrastructureServiceCollectionExtensions
             .ValidateOnStart();
 
         services.AddSingleton<IOAuthStateStore, InMemoryOAuthStateStore>();
-        services.AddSingleton<ITokenStore, InMemoryTokenStore>();
-        services.AddMemoryCache();
+        services.AddSingleton<InMemoryAccountStore>();
+        services.AddSingleton<ITokenStore>(provider => provider.GetRequiredService<InMemoryAccountStore>());
+        services.AddSingleton<IApplicationSessionStore>(provider => provider.GetRequiredService<InMemoryAccountStore>());
+        services.AddSingleton<AccountTokenRefreshCoordinator>();
+        services.AddSingleton(TimeProvider.System);
+        services.AddHostedService<SessionCleanupService>();
+        services.AddMemoryCache(options => options.SizeLimit = 50);
         services.AddSingleton<IYearBoundaryProvider, ConfiguredYearBoundaryProvider>();
         services.AddSingleton<IYearReviewStore, MemoryYearReviewStore>();
         services.AddSingleton<IYearReviewService, YearReviewService>();
@@ -285,6 +369,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddHttpClient<ITraktOAuthClient, TraktOAuthClient>((provider, client) =>
         {
             var options = provider.GetRequiredService<IOptions<TraktOptions>>().Value;
+            client.BaseAddress = new Uri(options.ApiBaseUrl);
             client.DefaultRequestHeaders.Add("trakt-api-version", "2");
             client.DefaultRequestHeaders.Add("trakt-api-key", options.ClientId);
             client.DefaultRequestHeaders.UserAgent.ParseAdd("TraktMyYear/1.0");

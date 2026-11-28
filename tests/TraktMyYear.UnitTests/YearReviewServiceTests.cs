@@ -99,6 +99,58 @@ public sealed class YearReviewServiceTests
         Assert.Equal(["Frequent Tie", "Popular Tie"], result.Items.Select(item => item.Title));
     }
 
+    [Fact]
+    public async Task SameYearIsCachedSeparatelyForDifferentAccounts()
+    {
+        var gateway = new AccountScopedGateway();
+        var service = new YearReviewService(gateway, new MemoryStore(), new UtcYearBoundaryProvider());
+
+        var first = await service.GetSnapshotAsync("account-a", 2026);
+        var second = await service.GetSnapshotAsync("account-b", 2026);
+
+        Assert.Equal("account-a", Assert.Single(first.Items).Title);
+        Assert.Equal("account-b", Assert.Single(second.Items).Title);
+        Assert.Equal(2, gateway.RequestCount);
+    }
+
+    [Fact]
+    public async Task RequestWaitingOnPreRefreshImportUsesTheRefreshedSnapshot()
+    {
+        var gateway = new RefreshRaceGateway();
+        var service = new YearReviewService(gateway, new MemoryStore(), new UtcYearBoundaryProvider());
+        var initialRequest = service.GetSnapshotAsync("account-a", 2026);
+        await gateway.FirstImportStarted.Task;
+
+        await service.RefreshAsync("account-a", 2026);
+        gateway.ReleaseFirstImport.TrySetResult(
+            [new TraktWatchedTitle(MediaType.Movie, 1, "stale", 2026, DateTimeOffset.UtcNow)]);
+
+        var result = await initialRequest;
+
+        Assert.Equal("refreshed", Assert.Single(result.Items).Title);
+        Assert.Equal("refreshed", Assert.Single((await service.GetSnapshotAsync("account-a", 2026)).Items).Title);
+    }
+
+    [Fact]
+    public async Task DisconnectDuringSnapshotCommitRemovesLateCacheWrite()
+    {
+        var accounts = new TraktMyYear.Infrastructure.Authentication.InMemoryAccountStore();
+        accounts.CreateSession(
+            new TraktAccount("account-a", "account-a"),
+            new TraktToken("access", "refresh", DateTimeOffset.UtcNow.AddHours(1)));
+        var store = new BlockingYearReviewStore();
+        var service = new YearReviewService(new AccountScopedGateway(), store, new UtcYearBoundaryProvider(), accounts);
+        var request = service.GetSnapshotAsync("account-a", 2026);
+        await store.WriteStarted.Task;
+
+        accounts.DisconnectAccount("account-a");
+        await store.RemoveAccountAsync("account-a");
+        store.AllowWrite.TrySetResult(true);
+
+        await Assert.ThrowsAsync<TraktAccountNotConnectedException>(() => request);
+        Assert.Null(await store.GetAsync("account-a", 2026));
+    }
+
     private static TraktWatchedTitle Watched(MediaType mediaType, int id, string title, string watchedAt) =>
         new(mediaType, id, title, 2026, DateTimeOffset.Parse(watchedAt));
 
@@ -107,20 +159,29 @@ public sealed class YearReviewServiceTests
 
     private sealed class MemoryStore : IYearReviewStore
     {
-        private YearReviewSnapshot? snapshot;
+        private readonly Dictionary<(string AccountId, int Year), YearReviewSnapshot> snapshots = [];
 
-        public Task<YearReviewSnapshot?> GetAsync(int year, CancellationToken cancellationToken = default) =>
-            Task.FromResult(snapshot);
+        public Task<YearReviewSnapshot?> GetAsync(string accountId, int year, CancellationToken cancellationToken = default) =>
+            Task.FromResult(snapshots.GetValueOrDefault((accountId, year)));
 
-        public Task SetAsync(YearReviewSnapshot value, CancellationToken cancellationToken = default)
+        public Task SetAsync(string accountId, YearReviewSnapshot value, CancellationToken cancellationToken = default)
         {
-            snapshot = value;
+            snapshots[(accountId, value.Year)] = value;
             return Task.CompletedTask;
         }
 
-        public Task RemoveAsync(int year, CancellationToken cancellationToken = default)
+        public Task RemoveAsync(string accountId, int year, CancellationToken cancellationToken = default)
         {
-            snapshot = null;
+            snapshots.Remove((accountId, year));
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAccountAsync(string accountId, CancellationToken cancellationToken = default)
+        {
+            foreach (var key in snapshots.Keys.Where(key => key.AccountId == accountId).ToArray())
+            {
+                snapshots.Remove(key);
+            }
             return Task.CompletedTask;
         }
     }
@@ -137,6 +198,7 @@ public sealed class YearReviewServiceTests
         public int ShowRatingCalls { get; private set; }
 
         public Task<IReadOnlyList<TraktWatchedTitle>> GetWatchedAsync(
+            string accountId,
             MediaType mediaType,
             DateTimeOffset startAt,
             DateTimeOffset endAt,
@@ -153,6 +215,7 @@ public sealed class YearReviewServiceTests
         }
 
         public Task<IReadOnlyList<TraktRatedTitle>> GetRatedAsync(
+            string accountId,
             MediaType mediaType,
             DateTimeOffset startAt,
             DateTimeOffset endAt,
@@ -166,6 +229,111 @@ public sealed class YearReviewServiceTests
 
             ShowRatingCalls++;
             return Task.FromResult(RatedShows);
+        }
+
+    }
+
+    private sealed class AccountScopedGateway : ITraktGateway
+    {
+        public int RequestCount { get; private set; }
+
+        public Task<IReadOnlyList<TraktWatchedTitle>> GetWatchedAsync(
+            string accountId,
+            MediaType mediaType,
+            DateTimeOffset startAt,
+            DateTimeOffset endAt,
+            CancellationToken cancellationToken = default)
+        {
+            if (mediaType == MediaType.Movie)
+            {
+                RequestCount++;
+                return Task.FromResult<IReadOnlyList<TraktWatchedTitle>>(
+                    [new TraktWatchedTitle(MediaType.Movie, 1, accountId, 2026, startAt)]);
+            }
+
+            return Task.FromResult<IReadOnlyList<TraktWatchedTitle>>([]);
+        }
+
+        public Task<IReadOnlyList<TraktRatedTitle>> GetRatedAsync(
+            string accountId,
+            MediaType mediaType,
+            DateTimeOffset startAt,
+            DateTimeOffset endAt,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<TraktRatedTitle>>([]);
+    }
+
+    private sealed class RefreshRaceGateway : ITraktGateway
+    {
+        private int movieWatchCalls;
+
+        public TaskCompletionSource<bool> FirstImportStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<IReadOnlyList<TraktWatchedTitle>> ReleaseFirstImport { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<IReadOnlyList<TraktWatchedTitle>> GetWatchedAsync(
+            string accountId,
+            MediaType mediaType,
+            DateTimeOffset startAt,
+            DateTimeOffset endAt,
+            CancellationToken cancellationToken = default)
+        {
+            if (mediaType != MediaType.Movie)
+            {
+                return Task.FromResult<IReadOnlyList<TraktWatchedTitle>>([]);
+            }
+
+            if (Interlocked.Increment(ref movieWatchCalls) == 1)
+            {
+                FirstImportStarted.TrySetResult(true);
+                return ReleaseFirstImport.Task;
+            }
+
+            return Task.FromResult<IReadOnlyList<TraktWatchedTitle>>(
+                [new TraktWatchedTitle(MediaType.Movie, 1, "refreshed", 2026, startAt)]);
+        }
+
+        public Task<IReadOnlyList<TraktRatedTitle>> GetRatedAsync(
+            string accountId,
+            MediaType mediaType,
+            DateTimeOffset startAt,
+            DateTimeOffset endAt,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<TraktRatedTitle>>([]);
+    }
+
+    private sealed class BlockingYearReviewStore : IYearReviewStore
+    {
+        private readonly Dictionary<(string AccountId, int Year), YearReviewSnapshot> snapshots = [];
+
+        public TaskCompletionSource<bool> WriteStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<bool> AllowWrite { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<YearReviewSnapshot?> GetAsync(string accountId, int year, CancellationToken cancellationToken = default) =>
+            Task.FromResult(snapshots.GetValueOrDefault((accountId, year)));
+
+        public async Task SetAsync(string accountId, YearReviewSnapshot value, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            WriteStarted.TrySetResult(true);
+            await AllowWrite.Task;
+            snapshots[(accountId, value.Year)] = value;
+        }
+
+        public Task RemoveAsync(string accountId, int year, CancellationToken cancellationToken = default)
+        {
+            snapshots.Remove((accountId, year));
+            return Task.CompletedTask;
+        }
+
+        public Task RemoveAccountAsync(string accountId, CancellationToken cancellationToken = default)
+        {
+            foreach (var key in snapshots.Keys.Where(key => key.AccountId == accountId).ToArray())
+            {
+                snapshots.Remove(key);
+            }
+
+            return Task.CompletedTask;
         }
     }
 }

@@ -4,8 +4,9 @@ Trakt My Year is a local .NET 11 web application that turns a Trakt account's mo
 history into a year-in-review dataset. It includes a browser view, a versioned HTTP API, CSV
 exports, and OpenAPI output. Episodes are intentionally represented as title-level show records.
 
-This project is currently designed for one local Trakt account. Data and OAuth tokens are held in
-memory and are lost when the application stops.
+One application instance can serve multiple independent Trakt accounts. Account sessions, OAuth
+tokens, and year-review snapshots are held in process memory and are lost when the application
+stops.
 
 ## Requirements
 
@@ -44,7 +45,7 @@ Optional variables:
 | --- | --- | --- |
 | `TRAKT_TIMEZONE` | `UTC` | Time zone used to determine calendar-year boundaries. |
 | `TRAKT_API_BASE_URL` | `https://api.trakt.tv` | Trakt API base URL. |
-| `TRAKT_TEST_ACCOUNT` | `me` | Trakt username used by the upstream client. |
+| `TRAKT_ALLOW_INSECURE_LOOPBACK` | `false` | Allow non-Secure session/correlation cookies only for plain-HTTP loopback requests. For local Docker use only; keep the app bound to localhost. |
 
 Environment variables supplied by the shell take effect as well. The local `.env` file is intended
 for development only.
@@ -81,10 +82,15 @@ Create the `.env` file described above, then pass it at container startup:
 docker run --detach --name trakt-my-year --publish 127.0.0.1:5000:8080 --env-file .env pangspang/trakt-my-year:latest
 ```
 
+For the plain-HTTP localhost Docker example, also set
+`TRAKT_ALLOW_INSECURE_LOOPBACK=true` in `.env`. This opt-in applies only to loopback hosts; do not
+bind the container to a public interface when using it. For remote use, leave it unset and put the
+app behind a private HTTPS reverse proxy.
+
 Alternatively, supply variables individually:
 
 ```powershell
-docker run --detach --name trakt-my-year --publish 127.0.0.1:5000:8080 --env TRAKT_CLIENT_ID=your-trakt-client-id --env TRAKT_CALLBACK_URL=http://localhost:5000/api/v1/auth/trakt/callback --env TRAKT_TIMEZONE=UTC pangspang/trakt-my-year:latest
+docker run --detach --name trakt-my-year --publish 127.0.0.1:5000:8080 --env TRAKT_CLIENT_ID=your-trakt-client-id --env TRAKT_CALLBACK_URL=http://localhost:5000/api/v1/auth/trakt/callback --env TRAKT_TIMEZONE=UTC --env TRAKT_ALLOW_INSECURE_LOOPBACK=true pangspang/trakt-my-year:latest
 ```
 
 To build from source instead, run `docker build --tag trakt-my-year:local .` from the repository
@@ -102,10 +108,11 @@ bind host port `5000` to localhost only. Open
 JSON. If you change the host port, update `TRAKT_CALLBACK_URL` and the Trakt application's redirect
 URI to match the browser-facing URL, not the internal container port.
 
-View logs with `docker logs trakt-my-year`; stop and remove the container with
-`docker stop trakt-my-year` and `docker rm trakt-my-year`. Tokens and cached data remain in memory
-and are lost on restart. The image does not change the application's single-user/local-use design;
-do not expose it publicly without HTTPS and access protection.
+Each Trakt account has isolated sessions, tokens, and cached data. Disconnecting any session revokes
+that account's sessions and removes its cached reviews. Sessions expire after eight hours maximum
+or 30 minutes idle. Storage is in-memory only, so a restart disconnects everyone and clears all
+cached data. The instance is intended for a small, trusted group behind private HTTPS and access
+protection; it is not designed as a public multi-tenant service.
 
 ## API examples
 
@@ -113,6 +120,7 @@ Connect the account before requesting year data:
 
 ```http
 GET /api/v1/auth/status
+GET /api/v1/auth/csrf
 GET /api/v1/year-reviews/2026
 GET /api/v1/year-reviews/2026/movies?sort=rating&direction=desc
 GET /api/v1/year-reviews/2026/shows?sort=watchedAt&direction=desc
@@ -127,7 +135,9 @@ GET /api/v1/year-reviews/2026/show/export.json
 DELETE /api/v1/auth/trakt
 ```
 
-The same requests are available in [TraktMyYear.Api.http](src/TraktMyYear.Api/TraktMyYear.Api.http).
+Cookie-authenticated POST/DELETE requests require the request token from
+`GET /api/v1/auth/csrf` in the `X-CSRF-TOKEN` header. The same requests are available in
+[TraktMyYear.Api.http](src/TraktMyYear.Api/TraktMyYear.Api.http).
 The first year request imports watched history and ratings into an in-memory snapshot. Snapshots
 expire after 30 minutes with a 10-minute sliding expiration; refresh explicitly rebuilds the year.
 Default CSV exports contain the complete cached collection for the selected media type.
@@ -200,9 +210,10 @@ validation with the respective services.
 ## Public repository notes
 
 - Do not commit `.env`, Trakt client credentials, OAuth tokens, or personal exports.
-- This is a single-user local application, not a hosted multi-user service.
-- Tokens are stored only in process memory and are cleared on restart or disconnect.
-- Use HTTPS and a protected secret store before exposing the application beyond localhost.
+- Accounts, sessions, tokens, and review snapshots are stored only in process memory and are cleared
+  on restart; disconnecting revokes all sessions and cached reviews for that Trakt account.
+- Use private HTTPS and a protected secret store before allowing access beyond localhost. The
+  insecure-loopback setting is for local HTTP only.
 
 ## License
 

@@ -6,6 +6,7 @@ namespace TraktMyYear.Application;
 public interface ISimklExportSource
 {
     Task<IReadOnlyList<YearReviewItem>> GetExportTitlesAsync(
+        string accountId,
         MediaType mediaType,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
@@ -15,6 +16,7 @@ public interface ISimklExportSource
 public sealed class SimklExportService(ISimklExportSource source, IYearBoundaryProvider boundaryProvider)
 {
     public async Task<IReadOnlyList<byte[]>> ExportAsync(
+        string accountId,
         int year,
         MediaType mediaType,
         YearReviewSort sort,
@@ -28,7 +30,7 @@ public sealed class SimklExportService(ISimklExportSource source, IYearBoundaryP
         }
 
         var (start, end) = boundaryProvider.GetBounds(year);
-        var items = await source.GetExportTitlesAsync(mediaType, start, end, cancellationToken);
+        var items = await source.GetExportTitlesAsync(accountId, mediaType, start, end, cancellationToken);
         return SimklCsv.Serialize(YearReviewService.SortItems(items, sort, direction), cancellationToken: cancellationToken);
     }
 }

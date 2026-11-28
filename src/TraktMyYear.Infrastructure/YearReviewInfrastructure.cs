@@ -5,29 +5,54 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Caching.Memory;
 using TraktMyYear.Application;
+using TraktMyYear.Infrastructure.Authentication;
 
 namespace TraktMyYear.Infrastructure;
 
 public sealed class MemoryYearReviewStore(IMemoryCache cache) : IYearReviewStore
 {
-    private static string Key(int year) => $"year-review:me:{year}";
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, System.Collections.Concurrent.ConcurrentDictionary<int, byte>> yearsByAccount = new(StringComparer.Ordinal);
 
-    public Task<YearReviewSnapshot?> GetAsync(int year, CancellationToken cancellationToken = default) =>
-        Task.FromResult(cache.Get<YearReviewSnapshot>(Key(year)));
+    private static string Key(string accountId, int year) => $"year-review:{accountId}:{year}";
 
-    public Task SetAsync(YearReviewSnapshot snapshot, CancellationToken cancellationToken = default)
+    public Task<YearReviewSnapshot?> GetAsync(string accountId, int year, CancellationToken cancellationToken = default) =>
+        Task.FromResult(cache.Get<YearReviewSnapshot>(Key(accountId, year)));
+
+    public Task SetAsync(string accountId, YearReviewSnapshot snapshot, CancellationToken cancellationToken = default)
     {
-        cache.Set(Key(snapshot.Year), snapshot, new MemoryCacheEntryOptions
+        cancellationToken.ThrowIfCancellationRequested();
+        yearsByAccount.GetOrAdd(accountId, static _ => new()).TryAdd(snapshot.Year, 0);
+        cache.Set(Key(accountId, snapshot.Year), snapshot, new MemoryCacheEntryOptions
         {
             AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(30),
-            SlidingExpiration = TimeSpan.FromMinutes(10)
+            SlidingExpiration = TimeSpan.FromMinutes(10),
+            Size = 1
         });
         return Task.CompletedTask;
     }
 
-    public Task RemoveAsync(int year, CancellationToken cancellationToken = default)
+    public Task RemoveAsync(string accountId, int year, CancellationToken cancellationToken = default)
     {
-        cache.Remove(Key(year));
+        cancellationToken.ThrowIfCancellationRequested();
+        cache.Remove(Key(accountId, year));
+        if (yearsByAccount.TryGetValue(accountId, out var years))
+        {
+            years.TryRemove(year, out _);
+        }
+        return Task.CompletedTask;
+    }
+
+    public Task RemoveAccountAsync(string accountId, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (yearsByAccount.TryRemove(accountId, out var years))
+        {
+            foreach (var year in years.Keys)
+            {
+                cache.Remove(Key(accountId, year));
+            }
+        }
+
         return Task.CompletedTask;
     }
 }
@@ -36,13 +61,14 @@ public sealed class TraktGateway(
     HttpClient httpClient,
     ITokenStore tokenStore,
     ITraktOAuthClient oauthClient,
-    Microsoft.Extensions.Options.IOptions<TraktOptions> options) : ITraktGateway, ISimklExportSource
+    IApplicationSessionStore sessionStore,
+    AccountTokenRefreshCoordinator refreshCoordinator) : ITraktGateway, ISimklExportSource
 {
     private const int PageSize = 100;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly string username = options.Value.Username;
 
     public async Task<IReadOnlyList<YearReviewItem>> GetExportTitlesAsync(
+        string accountId,
         MediaType mediaType,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
@@ -52,7 +78,8 @@ public sealed class TraktGateway(
         var start = Uri.EscapeDataString(startAt.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture));
         var end = Uri.EscapeDataString(endAt.ToUniversalTime().ToString("O", System.Globalization.CultureInfo.InvariantCulture));
         var history = await GetPagesAsync<JsonElement>(
-            $"/users/{Uri.EscapeDataString(username)}/history/{resource}?extended=full&start_at={start}&end_at={end}",
+            accountId,
+            $"/users/me/history/{resource}?extended=full&start_at={start}&end_at={end}",
             cancellationToken,
             requireComplete: true);
         var watched = new Dictionary<int, YearReviewItem>();
@@ -91,8 +118,8 @@ public sealed class TraktGateway(
         }
 
         var ratings = await (mediaType == MediaType.Movie
-            ? GetRatedMoviesAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, cancellationToken, requireComplete: true)
-            : GetRatedShowsAsync(DateTimeOffset.MinValue, DateTimeOffset.MaxValue, cancellationToken, requireComplete: true));
+            ? GetRatedMoviesAsync(accountId, DateTimeOffset.MinValue, DateTimeOffset.MaxValue, cancellationToken, requireComplete: true)
+            : GetRatedShowsAsync(accountId, DateTimeOffset.MinValue, DateTimeOffset.MaxValue, cancellationToken, requireComplete: true));
         foreach (var rating in ratings.GroupBy(item => item.TraktId).Select(group => group.MaxBy(item => item.RatedAt)!))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -116,30 +143,34 @@ public sealed class TraktGateway(
     }
 
     public Task<IReadOnlyList<TraktWatchedTitle>> GetWatchedAsync(
+        string accountId,
         MediaType mediaType,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
         CancellationToken cancellationToken = default) =>
         mediaType == MediaType.Movie
-            ? GetWatchedMoviesAsync(startAt, endAt, cancellationToken)
-            : GetWatchedShowsAsync(startAt, endAt, cancellationToken);
+            ? GetWatchedMoviesAsync(accountId, startAt, endAt, cancellationToken)
+            : GetWatchedShowsAsync(accountId, startAt, endAt, cancellationToken);
 
     public Task<IReadOnlyList<TraktRatedTitle>> GetRatedAsync(
+        string accountId,
         MediaType mediaType,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
         CancellationToken cancellationToken = default) =>
         mediaType == MediaType.Movie
-            ? GetRatedMoviesAsync(startAt, endAt, cancellationToken)
-            : GetRatedShowsAsync(startAt, endAt, cancellationToken);
+            ? GetRatedMoviesAsync(accountId, startAt, endAt, cancellationToken)
+            : GetRatedShowsAsync(accountId, startAt, endAt, cancellationToken);
 
     private async Task<IReadOnlyList<TraktWatchedTitle>> GetWatchedMoviesAsync(
+        string accountId,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
         CancellationToken cancellationToken)
     {
         var rows = await GetPagesAsync<WatchedMovieRow>(
-            $"/users/{Uri.EscapeDataString(username)}/watched/movies?extended=full",
+            accountId,
+            "/users/me/watched/movies?extended=full",
             cancellationToken);
         return rows.Where(row => row.Movie?.Ids?.Trakt is not null && row.LastWatchedAt is not null && row.LastWatchedAt >= startAt && row.LastWatchedAt < endAt)
             .Select(row => new TraktWatchedTitle(
@@ -156,12 +187,14 @@ public sealed class TraktGateway(
     }
 
     private async Task<IReadOnlyList<TraktWatchedTitle>> GetWatchedShowsAsync(
+        string accountId,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
         CancellationToken cancellationToken)
     {
         var rows = await GetPagesAsync<WatchedShowRow>(
-            $"/users/{Uri.EscapeDataString(username)}/watched/shows?extended=full",
+            accountId,
+            "/users/me/watched/shows?extended=full",
             cancellationToken);
         return rows.Where(row => row.Show?.Ids?.Trakt is not null && row.LastWatchedAt is not null && row.LastWatchedAt >= startAt && row.LastWatchedAt < endAt)
             .Select(row => new TraktWatchedTitle(
@@ -178,13 +211,15 @@ public sealed class TraktGateway(
     }
 
     private async Task<IReadOnlyList<TraktRatedTitle>> GetRatedMoviesAsync(
+        string accountId,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
         CancellationToken cancellationToken,
         bool requireComplete = false)
     {
         var rows = await GetPagesAsync<RatedMovieRow>(
-            $"/users/{Uri.EscapeDataString(username)}/ratings/movies?extended=full",
+            accountId,
+            "/users/me/ratings/movies?extended=full",
             cancellationToken, requireComplete);
         if (requireComplete && rows.Any(row => row.Movie?.Ids?.Trakt is null || row.RatedAt is null))
         {
@@ -207,13 +242,15 @@ public sealed class TraktGateway(
     }
 
     private async Task<IReadOnlyList<TraktRatedTitle>> GetRatedShowsAsync(
+        string accountId,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
         CancellationToken cancellationToken,
         bool requireComplete = false)
     {
         var rows = await GetPagesAsync<RatedShowRow>(
-            $"/users/{Uri.EscapeDataString(username)}/ratings/shows?extended=full",
+            accountId,
+            "/users/me/ratings/shows?extended=full",
             cancellationToken, requireComplete);
         if (requireComplete && rows.Any(row => row.Show?.Ids?.Trakt is null || row.RatedAt is null))
         {
@@ -235,13 +272,13 @@ public sealed class TraktGateway(
             .ToArray();
     }
 
-    private async Task<IReadOnlyList<T>> GetPagesAsync<T>(string path, CancellationToken cancellationToken, bool requireComplete = false)
+    private async Task<IReadOnlyList<T>> GetPagesAsync<T>(string accountId, string path, CancellationToken cancellationToken, bool requireComplete = false)
     {
         var results = new List<T>();
         for (var page = 1; requireComplete || page <= 100; page++)
         {
             var separator = path.Contains('?') ? '&' : '?';
-            using var response = await SendAsync($"{path}{separator}page={page}&limit={PageSize}", cancellationToken);
+            using var response = await SendAsync(accountId, $"{path}{separator}page={page}&limit={PageSize}", cancellationToken);
             var rows = await ReadRowsAsync<T>(response, cancellationToken, requireComplete);
             results.AddRange(rows);
             var pageCount = response.Headers.TryGetValues("X-Pagination-Page-Count", out var values)
@@ -413,40 +450,60 @@ public sealed class TraktGateway(
             ? date
             : null;
 
-    private async Task<HttpResponseMessage> SendAsync(string path, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SendAsync(string accountId, string path, CancellationToken cancellationToken)
     {
-        var token = await tokenStore.GetAsync(cancellationToken);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            sessionStore.GetAccountLifetimeToken(accountId));
+        var requestToken = linkedCancellation.Token;
+        var token = await tokenStore.GetAsync(accountId, requestToken);
         if (token is null)
         {
-            using var apiKeyResponse = await SendWithoutUserTokenAsync(path, cancellationToken);
-            if (!apiKeyResponse.IsSuccessStatusCode)
-            {
-                throw new HttpRequestException($"Trakt request failed with status {(int)apiKeyResponse.StatusCode}.");
-            }
-
-            return await CloneResponseAsync(apiKeyResponse, cancellationToken);
+            throw new TraktAccountNotConnectedException();
         }
 
-        using var response = await SendWithTokenAsync(path, token.AccessToken, cancellationToken);
+        using var response = await SendWithTokenAsync(path, token.AccessToken, requestToken);
         if (response.StatusCode != HttpStatusCode.Unauthorized)
         {
             if (!response.IsSuccessStatusCode)
             {
-                throw new HttpRequestException($"Trakt request failed with status {(int)response.StatusCode}.");
+                throw new HttpRequestException(
+                    $"Trakt request failed with status {(int)response.StatusCode}.",
+                    null,
+                    response.StatusCode);
             }
 
-            return await CloneResponseAsync(response, cancellationToken);
+            return await CloneResponseAsync(response, requestToken);
         }
 
-        var refreshed = await oauthClient.RefreshTokenAsync(token.RefreshToken, cancellationToken);
-        await tokenStore.SaveAsync(refreshed, cancellationToken);
-        using var retry = await SendWithTokenAsync(path, refreshed.AccessToken, cancellationToken);
+        await using var refreshLock = await refreshCoordinator.AcquireAsync(accountId, requestToken);
+        TraktToken refreshed;
+        var current = await tokenStore.GetAsync(accountId, requestToken)
+            ?? throw new TraktAccountNotConnectedException();
+        if (current.AccessToken != token.AccessToken)
+        {
+            refreshed = current;
+        }
+        else
+        {
+            refreshed = await oauthClient.RefreshTokenAsync(current.RefreshToken, requestToken);
+            if (!await tokenStore.TryReplaceAsync(accountId, current.AccessToken, refreshed, requestToken))
+            {
+                refreshed = await tokenStore.GetAsync(accountId, requestToken)
+                    ?? throw new TraktAccountNotConnectedException();
+            }
+        }
+
+        using var retry = await SendWithTokenAsync(path, refreshed.AccessToken, requestToken);
         if (!retry.IsSuccessStatusCode)
         {
-            throw new HttpRequestException($"Trakt request failed after token refresh with status {(int)retry.StatusCode}.");
+            throw new HttpRequestException(
+                $"Trakt request failed after token refresh with status {(int)retry.StatusCode}.",
+                null,
+                retry.StatusCode);
         }
 
-        return await CloneResponseAsync(retry, cancellationToken);
+        return await CloneResponseAsync(retry, requestToken);
     }
 
     private static async Task<HttpResponseMessage> CloneResponseAsync(
@@ -472,14 +529,6 @@ public sealed class TraktGateway(
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-    }
-
-    private async Task<HttpResponseMessage> SendWithoutUserTokenAsync(
-        string path,
-        CancellationToken cancellationToken)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, path);
         return await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
     }
 

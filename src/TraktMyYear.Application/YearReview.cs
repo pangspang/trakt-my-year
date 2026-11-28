@@ -107,12 +107,14 @@ public sealed record TopYearReview(
 public interface ITraktGateway
 {
     Task<IReadOnlyList<TraktWatchedTitle>> GetWatchedAsync(
+        string accountId,
         MediaType mediaType,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<TraktRatedTitle>> GetRatedAsync(
+        string accountId,
         MediaType mediaType,
         DateTimeOffset startAt,
         DateTimeOffset endAt,
@@ -121,9 +123,10 @@ public interface ITraktGateway
 
 public interface IYearReviewStore
 {
-    Task<YearReviewSnapshot?> GetAsync(int year, CancellationToken cancellationToken = default);
-    Task SetAsync(YearReviewSnapshot snapshot, CancellationToken cancellationToken = default);
-    Task RemoveAsync(int year, CancellationToken cancellationToken = default);
+    Task<YearReviewSnapshot?> GetAsync(string accountId, int year, CancellationToken cancellationToken = default);
+    Task SetAsync(string accountId, YearReviewSnapshot snapshot, CancellationToken cancellationToken = default);
+    Task RemoveAsync(string accountId, int year, CancellationToken cancellationToken = default);
+    Task RemoveAccountAsync(string accountId, CancellationToken cancellationToken = default);
 }
 
 public interface IYearBoundaryProvider
@@ -142,8 +145,9 @@ public sealed class UtcYearBoundaryProvider : IYearBoundaryProvider
 
 public interface IYearReviewService
 {
-    Task<YearReviewOverview> GetOverviewAsync(int year, CancellationToken cancellationToken = default);
+    Task<YearReviewOverview> GetOverviewAsync(string accountId, int year, CancellationToken cancellationToken = default);
     Task<PagedYearReview> GetTitlesAsync(
+        string accountId,
         int year,
         MediaType mediaType,
         YearReviewSort sort,
@@ -152,31 +156,36 @@ public interface IYearReviewService
         int pageSize,
         CancellationToken cancellationToken = default);
     Task<IReadOnlyList<YearReviewItem>> GetAllTitlesAsync(
+        string accountId,
         int year,
         MediaType mediaType,
         YearReviewSort sort,
         SortDirection direction,
         CancellationToken cancellationToken = default);
     Task<TopYearReview> GetTopTitlesAsync(
+        string accountId,
         int year,
         MediaType mediaType,
         int limit,
         decimal? minimumRating,
         CancellationToken cancellationToken = default);
-    Task<YearReviewSnapshot> GetSnapshotAsync(int year, CancellationToken cancellationToken = default);
-    Task RefreshAsync(int year, CancellationToken cancellationToken = default);
+    Task<YearReviewSnapshot> GetSnapshotAsync(string accountId, int year, CancellationToken cancellationToken = default);
+    Task RefreshAsync(string accountId, int year, CancellationToken cancellationToken = default);
 }
 
 public sealed class YearReviewService(
     ITraktGateway traktGateway,
     IYearReviewStore store,
-    IYearBoundaryProvider boundaryProvider) : IYearReviewService
+    IYearBoundaryProvider boundaryProvider,
+    IApplicationSessionStore? accountStore = null) : IYearReviewService
 {
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, Lazy<Task<YearReviewSnapshot>>> inFlight = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(string AccountId, int Year), Lazy<Task<YearReviewSnapshot>>> inFlight = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(string AccountId, int Year), long> generations = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(string AccountId, int Year), SemaphoreSlim> refreshLocks = new();
 
-    public async Task<YearReviewOverview> GetOverviewAsync(int year, CancellationToken cancellationToken = default)
+    public async Task<YearReviewOverview> GetOverviewAsync(string accountId, int year, CancellationToken cancellationToken = default)
     {
-        var snapshot = await GetSnapshotAsync(year, cancellationToken);
+        var snapshot = await GetSnapshotAsync(accountId, year, cancellationToken);
         var movies = snapshot.Items.Count(item => item.MediaType == MediaType.Movie);
         var shows = snapshot.Items.Count(item => item.MediaType == MediaType.Show);
         return new YearReviewOverview(
@@ -190,6 +199,7 @@ public sealed class YearReviewService(
     }
 
     public async Task<PagedYearReview> GetTitlesAsync(
+        string accountId,
         int year,
         MediaType mediaType,
         YearReviewSort sort,
@@ -203,7 +213,7 @@ public sealed class YearReviewService(
             throw new ArgumentOutOfRangeException(nameof(pageSize), "Page must be at least 1 and pageSize must be between 1 and 100.");
         }
 
-        var snapshot = await GetSnapshotAsync(year, cancellationToken);
+        var snapshot = await GetSnapshotAsync(accountId, year, cancellationToken);
         var items = SortItems(snapshot.Items.Where(item => item.MediaType == mediaType), sort, direction);
 
         var materialized = items.ToArray();
@@ -217,17 +227,19 @@ public sealed class YearReviewService(
     }
 
     public async Task<IReadOnlyList<YearReviewItem>> GetAllTitlesAsync(
+        string accountId,
         int year,
         MediaType mediaType,
         YearReviewSort sort,
         SortDirection direction,
         CancellationToken cancellationToken = default)
     {
-        var snapshot = await GetSnapshotAsync(year, cancellationToken);
+        var snapshot = await GetSnapshotAsync(accountId, year, cancellationToken);
         return SortItems(snapshot.Items.Where(item => item.MediaType == mediaType), sort, direction).ToArray();
     }
 
     public async Task<TopYearReview> GetTopTitlesAsync(
+        string accountId,
         int year,
         MediaType mediaType,
         int limit,
@@ -239,7 +251,7 @@ public sealed class YearReviewService(
             throw new ArgumentOutOfRangeException(nameof(limit), "Limit must be between 1 and 100 and minimumRating must be between 0 and 10.");
         }
 
-        var snapshot = await GetSnapshotAsync(year, cancellationToken);
+        var snapshot = await GetSnapshotAsync(accountId, year, cancellationToken);
         var items = snapshot.Items
             .Where(item => item.MediaType == mediaType)
             .Where(item => !minimumRating.HasValue || item.PersonalRating >= minimumRating)
@@ -272,48 +284,75 @@ public sealed class YearReviewService(
         _ => throw new ArgumentOutOfRangeException(nameof(sort))
     };
 
-    public async Task RefreshAsync(int year, CancellationToken cancellationToken = default)
+    public async Task RefreshAsync(string accountId, int year, CancellationToken cancellationToken = default)
     {
-        await store.RemoveAsync(year, cancellationToken);
-        inFlight.TryRemove(year, out _);
-        await GetSnapshotAsync(year, cancellationToken);
+        var key = (accountId, year);
+        var refreshLock = refreshLocks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
+        await refreshLock.WaitAsync(cancellationToken);
+        try
+        {
+            generations.AddOrUpdate(key, 1, static (_, current) => current + 1);
+            await store.RemoveAsync(accountId, year, cancellationToken);
+            inFlight.TryRemove(key, out _);
+            await GetSnapshotAsync(accountId, year, cancellationToken);
+        }
+        finally
+        {
+            refreshLock.Release();
+        }
     }
 
-    public async Task<YearReviewSnapshot> GetSnapshotAsync(int year, CancellationToken cancellationToken = default)
+    public async Task<YearReviewSnapshot> GetSnapshotAsync(string accountId, int year, CancellationToken cancellationToken = default)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accountId);
         if (year is < 1900 or > 2100)
         {
             throw new ArgumentOutOfRangeException(nameof(year), "Year must be between 1900 and 2100.");
         }
 
-        var cached = await store.GetAsync(year, cancellationToken);
-        if (cached is not null)
+        var key = (accountId, year);
+        while (true)
         {
-            return cached;
-        }
+            var cached = await store.GetAsync(accountId, year, cancellationToken);
+            if (cached is not null)
+            {
+                EnsureAccountActive(accountId);
+                return cached;
+            }
 
-        var lazy = inFlight.GetOrAdd(year, _ => new Lazy<Task<YearReviewSnapshot>>(
-            () => BuildSnapshotAsync(year, cancellationToken),
-            LazyThreadSafetyMode.ExecutionAndPublication));
-        try
-        {
-            return await lazy.Value;
-        }
-        finally
-        {
-            inFlight.TryRemove(year, out _);
+            var generation = generations.GetOrAdd(key, 0);
+            var lazy = inFlight.GetOrAdd(key, _ => new Lazy<Task<YearReviewSnapshot>>(
+                () => BuildSnapshotAsync(accountId, year, generation),
+                LazyThreadSafetyMode.ExecutionAndPublication));
+            try
+            {
+                var snapshot = await lazy.Value.WaitAsync(cancellationToken);
+                EnsureAccountActive(accountId);
+                if (generations.GetValueOrDefault(key) == generation)
+                {
+                    return snapshot;
+                }
+            }
+            finally
+            {
+                if (lazy.IsValueCreated && lazy.Value.IsCompleted)
+                {
+                    inFlight.TryRemove(new KeyValuePair<(string AccountId, int Year), Lazy<Task<YearReviewSnapshot>>>(key, lazy));
+                }
+            }
         }
     }
 
-    private async Task<YearReviewSnapshot> BuildSnapshotAsync(int year, CancellationToken cancellationToken)
+    private async Task<YearReviewSnapshot> BuildSnapshotAsync(string accountId, int year, long generation)
     {
+        var cancellationToken = accountStore?.GetAccountLifetimeToken(accountId) ?? CancellationToken.None;
         var (start, end) = boundaryProvider.GetBounds(year);
         var watched = (await Task.WhenAll(
-            traktGateway.GetWatchedAsync(MediaType.Movie, start, end, cancellationToken),
-            traktGateway.GetWatchedAsync(MediaType.Show, start, end, cancellationToken))).SelectMany(items => items);
+            traktGateway.GetWatchedAsync(accountId, MediaType.Movie, start, end, cancellationToken),
+            traktGateway.GetWatchedAsync(accountId, MediaType.Show, start, end, cancellationToken))).SelectMany(items => items);
         var rated = (await Task.WhenAll(
-            traktGateway.GetRatedAsync(MediaType.Movie, start, end, cancellationToken),
-            traktGateway.GetRatedAsync(MediaType.Show, start, end, cancellationToken))).SelectMany(items => items);
+            traktGateway.GetRatedAsync(accountId, MediaType.Movie, start, end, cancellationToken),
+            traktGateway.GetRatedAsync(accountId, MediaType.Show, start, end, cancellationToken))).SelectMany(items => items);
 
         var items = watched.GroupBy(item => (item.MediaType, item.TraktId))
             .Select(group =>
@@ -352,7 +391,75 @@ public sealed class YearReviewService(
         }
 
         var snapshot = new YearReviewSnapshot(year, DateTimeOffset.UtcNow, items);
-        await store.SetAsync(snapshot, cancellationToken);
+        if (!IsAccountLifetimeCurrent(accountId, cancellationToken))
+        {
+            throw new TraktAccountNotConnectedException();
+        }
+
+        if (generations.GetValueOrDefault((accountId, year)) == generation)
+        {
+            await store.SetAsync(accountId, snapshot, cancellationToken);
+            if (!IsAccountLifetimeCurrent(accountId, cancellationToken))
+            {
+                await store.RemoveAccountAsync(accountId, CancellationToken.None);
+                throw new TraktAccountNotConnectedException();
+            }
+        }
+
         return snapshot;
     }
+
+    private void EnsureAccountActive(string accountId)
+    {
+        if (accountStore is not null && !accountStore.IsAccountActive(accountId))
+        {
+            throw new TraktAccountNotConnectedException();
+        }
+    }
+
+    private bool IsAccountLifetimeCurrent(string accountId, CancellationToken expectedLifetime)
+    {
+        if (accountStore is null)
+        {
+            return true;
+        }
+
+        if (expectedLifetime.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        try
+        {
+            return accountStore.GetAccountLifetimeToken(accountId) == expectedLifetime;
+        }
+        catch (TraktAccountNotConnectedException)
+        {
+            return false;
+        }
+    }
+
+    public Task<YearReviewOverview> GetOverviewAsync(int year, CancellationToken cancellationToken = default) =>
+        GetOverviewAsync("test-account", year, cancellationToken);
+
+    public Task<PagedYearReview> GetTitlesAsync(
+        int year, MediaType mediaType, YearReviewSort sort, SortDirection direction, int page, int pageSize,
+        CancellationToken cancellationToken = default) =>
+        GetTitlesAsync("test-account", year, mediaType, sort, direction, page, pageSize, cancellationToken);
+
+    public Task<IReadOnlyList<YearReviewItem>> GetAllTitlesAsync(
+        int year, MediaType mediaType, YearReviewSort sort, SortDirection direction,
+        CancellationToken cancellationToken = default) =>
+        GetAllTitlesAsync("test-account", year, mediaType, sort, direction, cancellationToken);
+
+    public Task<TopYearReview> GetTopTitlesAsync(
+        int year, MediaType mediaType, int limit, decimal? minimumRating,
+        CancellationToken cancellationToken = default) =>
+        GetTopTitlesAsync("test-account", year, mediaType, limit, minimumRating, cancellationToken);
+
+    public Task<YearReviewSnapshot> GetSnapshotAsync(int year, CancellationToken cancellationToken = default) =>
+        GetSnapshotAsync("test-account", year, cancellationToken);
+
+    public Task RefreshAsync(int year, CancellationToken cancellationToken = default) =>
+        RefreshAsync("test-account", year, cancellationToken);
 }

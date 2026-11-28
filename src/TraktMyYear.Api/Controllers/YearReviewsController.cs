@@ -4,37 +4,46 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.Json;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Antiforgery;
 using TraktMyYear.Application;
 using TraktMyYear.Infrastructure;
 
 namespace TraktMyYear.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/v1/year-reviews")]
 public sealed class YearReviewsController(
     IYearReviewService yearReviewService,
     SimklExportService simklExportService,
-    IOptions<TraktOptions> traktOptions) : ControllerBase
+    IOptions<TraktOptions> traktOptions,
+    IAntiforgery antiforgery) : ControllerBase
 {
+    private const int TraktRateLimitStatus = 420;
     private static readonly JsonSerializerOptions RewindJson = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    private string AccountId => User.FindFirstValue("account_id")
+        ?? throw new TraktAccountNotConnectedException();
 
     /// <summary>Returns the title counts for a calendar year.</summary>
     [HttpGet("{year:int}")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<YearReviewOverview>> GetOverview(
         int year,
         CancellationToken cancellationToken)
     {
         try
         {
-            return Ok(await yearReviewService.GetOverviewAsync(year, cancellationToken));
+            return Ok(await yearReviewService.GetOverviewAsync(AccountId, year, cancellationToken));
         }
         catch (ArgumentOutOfRangeException exception)
         {
             return Problem(title: "The year is invalid.", detail: exception.Message, statusCode: StatusCodes.Status400BadRequest);
         }
-        catch (TraktAccountNotConnectedException exception)
+        catch (TraktAccountNotConnectedException)
         {
-            return Problem(title: "Trakt account connection required.", detail: exception.Message, statusCode: StatusCodes.Status409Conflict);
+            return Problem(title: "Application session expired.", detail: "Reconnect your Trakt account.", statusCode: StatusCodes.Status401Unauthorized);
         }
         catch (InvalidOperationException exception)
         {
@@ -42,12 +51,13 @@ public sealed class YearReviewsController(
         }
         catch (HttpRequestException exception)
         {
-            return Problem(title: "Trakt could not be reached.", detail: exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            return TraktRequestProblem(exception);
         }
     }
 
     /// <summary>Returns sorted and paginated movie titles for a calendar year.</summary>
     [HttpGet("{year:int}/movies")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     public Task<ActionResult<PagedYearReview>> GetMovies(
         int year,
         [FromQuery] YearReviewSort sort = YearReviewSort.Title,
@@ -59,6 +69,7 @@ public sealed class YearReviewsController(
 
     /// <summary>Returns sorted and paginated show titles for a calendar year.</summary>
     [HttpGet("{year:int}/shows")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     public Task<ActionResult<PagedYearReview>> GetShows(
         int year,
         [FromQuery] YearReviewSort sort = YearReviewSort.Title,
@@ -79,7 +90,8 @@ public sealed class YearReviewsController(
     [HttpGet("{year:int}/{mediaType}/export.csv")]
     [ProducesResponseType(typeof(void), StatusCodes.Status200OK, "text/csv", "application/zip")]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> Export(
         int year,
@@ -101,7 +113,7 @@ public sealed class YearReviewsController(
             if (string.Equals(format, "simkl", StringComparison.OrdinalIgnoreCase))
             {
                 Response.Headers.CacheControl = "no-store";
-                var files = await simklExportService.ExportAsync(year, mediaType, sort, direction, cancellationToken);
+                var files = await simklExportService.ExportAsync(AccountId, year, mediaType, sort, direction, cancellationToken);
                 var name = $"trakt-my-year-{year}-{mediaType.ToString().ToLowerInvariant()}-simkl";
                 if (files.Count == 1)
                 {
@@ -121,7 +133,7 @@ public sealed class YearReviewsController(
                 return File(buffer.ToArray(), "application/zip", $"{name}.zip");
             }
 
-            var items = await yearReviewService.GetAllTitlesAsync(year, mediaType, sort, direction, cancellationToken);
+            var items = await yearReviewService.GetAllTitlesAsync(AccountId, year, mediaType, sort, direction, cancellationToken);
             var csv = new StringBuilder("mediaType,traktId,title,year,watchedAt,ratedAt,personalRating,posterUrl,traktUrl\r\n");
             foreach (var item in items)
             {
@@ -136,10 +148,16 @@ public sealed class YearReviewsController(
         }
         catch (Exception exception) when (exception is ArgumentOutOfRangeException or TraktAccountNotConnectedException or InvalidOperationException or HttpRequestException or JsonException)
         {
+            if (exception is HttpRequestException requestException
+                && (int?)requestException.StatusCode == TraktRateLimitStatus)
+            {
+                return TraktRateLimitProblem();
+            }
+
             var status = exception switch
             {
                 ArgumentOutOfRangeException => StatusCodes.Status400BadRequest,
-                TraktAccountNotConnectedException => StatusCodes.Status409Conflict,
+                TraktAccountNotConnectedException => StatusCodes.Status401Unauthorized,
                 _ => StatusCodes.Status502BadGateway
             };
             return Problem(title: "The year review could not be exported.",
@@ -157,7 +175,8 @@ public sealed class YearReviewsController(
     [HttpGet("{year:int}/{mediaType}/export.json")]
     [ProducesResponseType<RewindExportFile>(StatusCodes.Status200OK)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
-    [ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     public async Task<IActionResult> ExportRewind(
         int year,
@@ -173,7 +192,7 @@ public sealed class YearReviewsController(
                 return Problem(title: "Invalid export parameters.", detail: "Use a valid media type, sort, and direction.", statusCode: StatusCodes.Status400BadRequest);
             }
 
-            var snapshot = await yearReviewService.GetSnapshotAsync(year, cancellationToken);
+            var snapshot = await yearReviewService.GetSnapshotAsync(AccountId, year, cancellationToken);
             var export = RewindExportFile.Create(snapshot, mediaType, traktOptions.Value.Timezone, sort, direction);
             Response.Headers.CacheControl = "no-store";
             var bytes = JsonSerializer.SerializeToUtf8Bytes(export, RewindJson);
@@ -181,10 +200,16 @@ public sealed class YearReviewsController(
         }
         catch (Exception exception) when (exception is ArgumentOutOfRangeException or TraktAccountNotConnectedException or InvalidOperationException or HttpRequestException or JsonException)
         {
+            if (exception is HttpRequestException requestException
+                && (int?)requestException.StatusCode == TraktRateLimitStatus)
+            {
+                return TraktRateLimitProblem();
+            }
+
             var status = exception switch
             {
                 ArgumentOutOfRangeException => StatusCodes.Status400BadRequest,
-                TraktAccountNotConnectedException => StatusCodes.Status409Conflict,
+                TraktAccountNotConnectedException => StatusCodes.Status401Unauthorized,
                 _ => StatusCodes.Status502BadGateway
             };
             return Problem(title: "The year review could not be exported.",
@@ -195,6 +220,7 @@ public sealed class YearReviewsController(
 
     /// <summary>Returns a configurable ranked list using personal rating, title, and ID as tie-breakers.</summary>
     [HttpGet("{year:int}/{mediaType}/top")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
     public async Task<ActionResult<TopYearReview>> GetTop(
         int year,
         MediaType mediaType,
@@ -204,15 +230,15 @@ public sealed class YearReviewsController(
     {
         try
         {
-            return Ok(await yearReviewService.GetTopTitlesAsync(year, mediaType, limit, minimumRating, cancellationToken));
+            return Ok(await yearReviewService.GetTopTitlesAsync(AccountId, year, mediaType, limit, minimumRating, cancellationToken));
         }
         catch (ArgumentOutOfRangeException exception)
         {
             return Problem(title: "The top-list parameters are invalid.", detail: exception.Message, statusCode: 400);
         }
-        catch (TraktAccountNotConnectedException exception)
+        catch (TraktAccountNotConnectedException)
         {
-            return Problem(title: "Trakt account connection required.", detail: exception.Message, statusCode: 409);
+            return Problem(title: "Application session expired.", detail: "Reconnect your Trakt account.", statusCode: 401);
         }
         catch (InvalidOperationException exception)
         {
@@ -220,28 +246,38 @@ public sealed class YearReviewsController(
         }
         catch (HttpRequestException exception)
         {
-            return Problem(title: "Trakt could not be reached.", detail: exception.Message, statusCode: 502);
+            return TraktRequestProblem(exception);
         }
     }
 
     /// <summary>Invalidates and rebuilds the cached year review.</summary>
     [HttpPost("{year:int}/refresh")]
+    [ProducesResponseType(typeof(YearReviewOverview), StatusCodes.Status200OK)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<YearReviewOverview>> Refresh(
         int year,
         CancellationToken cancellationToken)
     {
+        if (!await antiforgery.IsRequestValidAsync(HttpContext))
+        {
+            return Problem(title: "The anti-forgery token is missing or invalid.", statusCode: 400);
+        }
+
         try
         {
-            await yearReviewService.RefreshAsync(year, cancellationToken);
-            return Ok(await yearReviewService.GetOverviewAsync(year, cancellationToken));
+            await yearReviewService.RefreshAsync(AccountId, year, cancellationToken);
+            return Ok(await yearReviewService.GetOverviewAsync(AccountId, year, cancellationToken));
         }
         catch (ArgumentOutOfRangeException exception)
         {
             return Problem(title: "The year is invalid.", detail: exception.Message, statusCode: StatusCodes.Status400BadRequest);
         }
-        catch (TraktAccountNotConnectedException exception)
+        catch (TraktAccountNotConnectedException)
         {
-            return Problem(title: "Trakt account connection required.", detail: exception.Message, statusCode: StatusCodes.Status409Conflict);
+            return Problem(title: "Application session expired.", detail: "Reconnect your Trakt account.", statusCode: StatusCodes.Status401Unauthorized);
         }
         catch (InvalidOperationException exception)
         {
@@ -249,7 +285,7 @@ public sealed class YearReviewsController(
         }
         catch (HttpRequestException exception)
         {
-            return Problem(title: "Trakt could not be reached.", detail: exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            return TraktRequestProblem(exception);
         }
     }
 
@@ -265,6 +301,7 @@ public sealed class YearReviewsController(
         try
         {
             return Ok(await yearReviewService.GetTitlesAsync(
+                AccountId,
                 year,
                 mediaType,
                 sort,
@@ -277,9 +314,9 @@ public sealed class YearReviewsController(
         {
             return Problem(title: "The year or paging parameters are invalid.", detail: exception.Message, statusCode: StatusCodes.Status400BadRequest);
         }
-        catch (TraktAccountNotConnectedException exception)
+        catch (TraktAccountNotConnectedException)
         {
-            return Problem(title: "Trakt account connection required.", detail: exception.Message, statusCode: StatusCodes.Status409Conflict);
+            return Problem(title: "Application session expired.", detail: "Reconnect your Trakt account.", statusCode: StatusCodes.Status401Unauthorized);
         }
         catch (InvalidOperationException exception)
         {
@@ -287,9 +324,20 @@ public sealed class YearReviewsController(
         }
         catch (HttpRequestException exception)
         {
-            return Problem(title: "Trakt could not be reached.", detail: exception.Message, statusCode: StatusCodes.Status502BadGateway);
+            return TraktRequestProblem(exception);
         }
     }
+
+    private ObjectResult TraktRequestProblem(HttpRequestException exception) =>
+        (int?)exception.StatusCode == TraktRateLimitStatus
+            ? TraktRateLimitProblem()
+            : Problem(title: "Trakt could not be reached.", detail: exception.Message, statusCode: StatusCodes.Status502BadGateway);
+
+    private ObjectResult TraktRateLimitProblem() =>
+        Problem(
+            title: "Trakt rate limit exceeded.",
+            detail: "Trakt is temporarily limiting requests. Wait a little before trying again.",
+            statusCode: StatusCodes.Status429TooManyRequests);
 
     private static string Csv(string? value) => value is null ? string.Empty : $"\"{value.Replace("\"", "\"\"")}\"";
 }

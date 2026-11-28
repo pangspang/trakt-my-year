@@ -4,13 +4,14 @@ using System.Text;
 using System.Text.Json;
 using TraktMyYear.Application;
 using TraktMyYear.Infrastructure;
+using TraktMyYear.Infrastructure.Authentication;
 
 namespace TraktMyYear.UnitTests;
 
 public sealed class TraktGatewayTests
 {
     [Fact]
-    public async Task WatchedShowsUseApiKeyWhenOAuthIsNotConnected()
+    public async Task WatchedShowsUseTheAuthenticatedAccountToken()
     {
         var handler = new FixtureHandler(
             new HttpResponseMessage(HttpStatusCode.OK)
@@ -20,24 +21,22 @@ public sealed class TraktGatewayTests
                     Encoding.UTF8,
                     "application/json")
             });
-        var gateway = new TraktGateway(
-            new HttpClient(handler) { BaseAddress = new Uri("https://api.trakt.tv") },
-            new InMemoryTokenStore(),
-            new FakeOAuthClient(),
-            Microsoft.Extensions.Options.Options.Create(new TraktOptions { Username = "pangspang" }));
+        var accounts = CreateAccountStore();
+        var gateway = CreateGateway(handler, accounts);
 
         var result = await gateway.GetWatchedAsync(
+            "test-account",
             MediaType.Show,
             new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
 
         Assert.Single(result);
-        Assert.Null(handler.AuthorizationHeaders[0]);
+        Assert.Equal("access", handler.AuthorizationHeaders[0]?.Parameter);
         Assert.Equal("https://images.example/poster.jpg", result[0].PosterUrl);
         Assert.Equal("https://trakt.tv/shows/example-show", result[0].TraktUrl);
         Assert.Equal(new TitleExternalIds("tt0000042", 52, 62), result[0].ExternalIds);
         Assert.Equal(new DateTimeOffset(2026, 1, 2, 10, 0, 0, TimeSpan.Zero), result[0].WatchedAt);
-        Assert.Contains("/users/pangspang/watched/shows?extended=full&page=1&limit=100", handler.RequestUris[0]);
+        Assert.Contains("/users/me/watched/shows?extended=full&page=1&limit=100", handler.RequestUris[0]);
     }
 
     [Fact]
@@ -52,16 +51,12 @@ public sealed class TraktGatewayTests
                     Encoding.UTF8,
                     "application/json")
             });
-        var tokens = new InMemoryTokenStore();
-        await tokens.SaveAsync(new TraktToken("expired", "refresh", DateTimeOffset.UtcNow.AddMinutes(-1)));
+        var tokens = CreateAccountStore(new TraktToken("expired", "refresh", DateTimeOffset.UtcNow.AddMinutes(-1)));
         var oauth = new FakeOAuthClient();
-        var gateway = new TraktGateway(
-            new HttpClient(handler) { BaseAddress = new Uri("https://api.trakt.tv") },
-            tokens,
-            oauth,
-            Microsoft.Extensions.Options.Options.Create(new TraktOptions { Username = "me" }));
+        var gateway = CreateGateway(handler, tokens, oauth);
 
         var result = await gateway.GetWatchedAsync(
+            "test-account",
             MediaType.Show,
             new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
@@ -86,13 +81,11 @@ public sealed class TraktGatewayTests
                     Encoding.UTF8,
                     "application/json")
             });
-        var gateway = new TraktGateway(
-            new HttpClient(handler) { BaseAddress = new Uri("https://api.trakt.tv") },
-            new InMemoryTokenStore(),
-            new FakeOAuthClient(),
-            Microsoft.Extensions.Options.Options.Create(new TraktOptions { Username = "pangspang" }));
+        var accounts = CreateAccountStore();
+        var gateway = CreateGateway(handler, accounts);
 
         var result = await gateway.GetWatchedAsync(
+            "test-account",
             MediaType.Movie,
             new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
             new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero));
@@ -100,6 +93,22 @@ public sealed class TraktGatewayTests
         var movie = Assert.Single(result);
         Assert.Equal(42, movie.TraktId);
         Assert.Equal(new DateTimeOffset(2026, 1, 2, 10, 0, 0, TimeSpan.Zero), movie.WatchedAt);
+    }
+
+    [Fact]
+    public async Task RateLimitedResponsePreservesTraktStatusCode()
+    {
+        var gateway = CreateGateway(
+            new FixtureHandler(new HttpResponseMessage((HttpStatusCode)420)),
+            CreateAccountStore());
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(() => gateway.GetWatchedAsync(
+            "test-account",
+            MediaType.Movie,
+            new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero),
+            new DateTimeOffset(2027, 1, 1, 0, 0, 0, TimeSpan.Zero)));
+
+        Assert.Equal((HttpStatusCode)420, exception.StatusCode);
     }
 
     [Fact]
@@ -120,12 +129,10 @@ public sealed class TraktGatewayTests
                   {"rating":7,"rated_at":"2024-01-01T00:00:00Z","movie":{"title":"Unrelated","ids":{"trakt":44}}}
                 ]
                 """));
-        var gateway = new TraktGateway(
-            new HttpClient(handler) { BaseAddress = new Uri("https://api.trakt.tv") },
-            new InMemoryTokenStore(), new FakeOAuthClient(),
-            Microsoft.Extensions.Options.Options.Create(new TraktOptions { Username = "me" }));
+        var accounts = CreateAccountStore();
+        var gateway = CreateGateway(handler, accounts);
 
-        var items = await gateway.GetExportTitlesAsync(MediaType.Movie,
+        var items = await gateway.GetExportTitlesAsync("test-account", MediaType.Movie,
             DateTimeOffset.Parse("2025-01-01T00:00:00Z"), DateTimeOffset.Parse("2026-01-01T00:00:00Z"));
 
         Assert.Equal(2, items.Count);
@@ -138,6 +145,19 @@ public sealed class TraktGatewayTests
         Assert.Contains("start_at=", handler.RequestUris[0]);
     }
 
+    private static InMemoryAccountStore CreateAccountStore(TraktToken? token = null)
+    {
+        var store = new InMemoryAccountStore();
+        store.CreateSession(
+            new TraktAccount("test-account", "test"),
+            token ?? new TraktToken("access", "refresh", DateTimeOffset.UtcNow.AddHours(1)));
+        return store;
+    }
+
+    private static TraktGateway CreateGateway(HttpMessageHandler handler, InMemoryAccountStore accounts, FakeOAuthClient? oauth = null) =>
+        new(new HttpClient(handler) { BaseAddress = new Uri("https://api.trakt.tv") },
+            accounts, oauth ?? new FakeOAuthClient(), accounts, new AccountTokenRefreshCoordinator());
+
     private static HttpResponseMessage JsonResponse(string json) => new(HttpStatusCode.OK)
     {
         Content = new StringContent(json, Encoding.UTF8, "application/json")
@@ -147,12 +167,10 @@ public sealed class TraktGatewayTests
     public async Task SimklTraversesHistoryBeyondTheLegacyHundredPageLimit()
     {
         var handler = new PagedHistoryHandler();
-        var gateway = new TraktGateway(
-            new HttpClient(handler) { BaseAddress = new Uri("https://api.trakt.tv") },
-            new InMemoryTokenStore(), new FakeOAuthClient(),
-            Microsoft.Extensions.Options.Options.Create(new TraktOptions { Username = "me" }));
+        var accounts = CreateAccountStore();
+        var gateway = CreateGateway(handler, accounts);
 
-        var items = await gateway.GetExportTitlesAsync(MediaType.Movie,
+        var items = await gateway.GetExportTitlesAsync("test-account", MediaType.Movie,
             DateTimeOffset.Parse("2026-01-01T00:00:00Z"), DateTimeOffset.Parse("2027-01-01T00:00:00Z"));
 
         Assert.Equal(101, items.Count);
@@ -171,12 +189,10 @@ public sealed class TraktGatewayTests
               {"type":"movie","watched_at":"2026-01-03T00:00:00Z","movie":{"title":"Not a show","ids":{"trakt":42}}}
             ]
             """), JsonResponse("[]"));
-        var gateway = new TraktGateway(
-            new HttpClient(handler) { BaseAddress = new Uri("https://api.trakt.tv") },
-            new InMemoryTokenStore(), new FakeOAuthClient(),
-            Microsoft.Extensions.Options.Options.Create(new TraktOptions { Username = "me" }));
+        var accounts = CreateAccountStore();
+        var gateway = CreateGateway(handler, accounts);
 
-        var item = Assert.Single(await gateway.GetExportTitlesAsync(MediaType.Show,
+        var item = Assert.Single(await gateway.GetExportTitlesAsync("test-account", MediaType.Show,
             DateTimeOffset.Parse("2026-01-01T00:00:00Z"), DateTimeOffset.Parse("2027-01-01T00:00:00Z")));
 
         Assert.Equal(MediaType.Show, item.MediaType);
@@ -194,24 +210,18 @@ public sealed class TraktGatewayTests
     [InlineData("[{\"type\":\"movie\",\"watched_at\":\"2026-01-02T00:00:00Z\",\"movie\":{\"title\":\"Missing ID\"}}]")]
     public async Task SimklDoesNotSilentlyExportIncompleteHistory(string json)
     {
-        var gateway = new TraktGateway(
-            new HttpClient(new FixtureHandler(JsonResponse(json))) { BaseAddress = new Uri("https://api.trakt.tv") },
-            new InMemoryTokenStore(), new FakeOAuthClient(),
-            Microsoft.Extensions.Options.Options.Create(new TraktOptions { Username = "me" }));
+        var gateway = CreateGateway(new FixtureHandler(JsonResponse(json)), CreateAccountStore());
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => gateway.GetExportTitlesAsync(MediaType.Movie,
+        await Assert.ThrowsAsync<InvalidOperationException>(() => gateway.GetExportTitlesAsync("test-account", MediaType.Movie,
             DateTimeOffset.Parse("2026-01-01T00:00:00Z"), DateTimeOffset.Parse("2027-01-01T00:00:00Z")));
     }
 
     [Fact]
     public async Task SimklRejectsUnexpectedResponseShapeRatherThanReturningAnEmptyExport()
     {
-        var gateway = new TraktGateway(
-            new HttpClient(new FixtureHandler(JsonResponse("{\"error\":\"unexpected\"}"))) { BaseAddress = new Uri("https://api.trakt.tv") },
-            new InMemoryTokenStore(), new FakeOAuthClient(),
-            Microsoft.Extensions.Options.Options.Create(new TraktOptions { Username = "me" }));
+        var gateway = CreateGateway(new FixtureHandler(JsonResponse("{\"error\":\"unexpected\"}")), CreateAccountStore());
 
-        await Assert.ThrowsAsync<JsonException>(() => gateway.GetExportTitlesAsync(MediaType.Movie,
+        await Assert.ThrowsAsync<JsonException>(() => gateway.GetExportTitlesAsync("test-account", MediaType.Movie,
             DateTimeOffset.Parse("2026-01-01T00:00:00Z"), DateTimeOffset.Parse("2027-01-01T00:00:00Z")));
     }
 
@@ -266,5 +276,8 @@ public sealed class TraktGatewayTests
             RefreshCalls++;
             return Task.FromResult(new TraktToken("refreshed", "refresh", DateTimeOffset.UtcNow.AddHours(1)));
         }
+
+        public Task<TraktAccount> GetAccountAsync(TraktToken token, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TraktAccount("test-account", "test"));
     }
 }

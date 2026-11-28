@@ -3,11 +3,12 @@ namespace TraktMyYear.Application;
 public sealed class AuthenticationService(
     IOAuthStateStore stateStore,
     ITraktOAuthClient traktOAuthClient,
-    ITokenStore tokenStore) : IAuthenticationService
+    IApplicationSessionStore sessionStore,
+    IYearReviewStore yearReviewStore) : IAuthenticationService
 {
-    public OAuthAuthorization BeginAuthorization()
+    public OAuthAuthorization BeginAuthorization(string browserId, string? originatingSessionId = null)
     {
-        var oauthState = stateStore.Create();
+        var oauthState = stateStore.Create(browserId, originatingSessionId);
         var codeChallenge = Convert.ToBase64String(
                 System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(oauthState.CodeVerifier)))
             .Replace('+', '-')
@@ -18,19 +19,57 @@ public sealed class AuthenticationService(
             oauthState.State);
     }
 
-    public async Task CompleteAuthorizationAsync(
+    public async Task<AuthenticatedLogin> CompleteAuthorizationAsync(
         TraktAuthorizationCallback callback,
+        string browserId,
+        string? replaceSessionId,
         CancellationToken cancellationToken = default)
     {
-        if (!stateStore.TryConsume(callback.State, out var codeVerifier))
+        if (!stateStore.TryConsume(callback.State, browserId, out var oauthState))
         {
-            throw new InvalidOperationException("The OAuth state is invalid or has expired.");
+            throw new InvalidOperationException("The OAuth state is invalid, expired, or belongs to another browser.");
         }
 
-        var token = await traktOAuthClient.ExchangeCodeAsync(callback.Code, codeVerifier, cancellationToken);
-        await tokenStore.SaveAsync(token, cancellationToken);
+        if (!string.Equals(replaceSessionId, oauthState.OriginatingSessionId, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("The originating application session has changed.");
+        }
+
+        var originatingSession = replaceSessionId is null
+            ? null
+            : sessionStore.GetSession(replaceSessionId)
+                ?? throw new InvalidOperationException("The originating application session is no longer active.");
+        var previousAccountId = originatingSession?.AccountId;
+
+        var token = await traktOAuthClient.ExchangeCodeAsync(callback.Code, oauthState.CodeVerifier, cancellationToken);
+        var account = await traktOAuthClient.GetAccountAsync(token, cancellationToken);
+        if (string.IsNullOrWhiteSpace(account.Id) || string.IsNullOrWhiteSpace(account.DisplayName))
+        {
+            throw new InvalidOperationException("Trakt did not return a valid account identity.");
+        }
+
+        if (!sessionStore.IsAccountActive(account.Id))
+        {
+            await yearReviewStore.RemoveAccountAsync(account.Id, cancellationToken);
+        }
+
+        var login = sessionStore.CreateSession(
+            account,
+            token,
+            replaceSessionId,
+            originatingSession?.LifetimeToken);
+        if (previousAccountId is not null && previousAccountId != account.Id
+            && !sessionStore.IsAccountActive(previousAccountId))
+        {
+            await yearReviewStore.RemoveAccountAsync(previousAccountId, cancellationToken);
+        }
+
+        return login;
     }
 
-    public Task DisconnectAsync(CancellationToken cancellationToken = default) =>
-        tokenStore.ClearAsync(cancellationToken);
+    public async Task DisconnectAsync(string accountId, CancellationToken cancellationToken = default)
+    {
+        sessionStore.DisconnectAccount(accountId);
+        await yearReviewStore.RemoveAccountAsync(accountId, cancellationToken);
+    }
 }

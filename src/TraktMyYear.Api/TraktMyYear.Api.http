@@ -1,4 +1,5 @@
 @TraktMyYear.Api_HostAddress = http://localhost:5000
+@csrfToken = replace-with-request-token-from-csrf-response
 
 GET {{TraktMyYear.Api_HostAddress}}/api/v1/auth/status
 Accept: application/json
@@ -13,7 +14,14 @@ GET {{TraktMyYear.Api_HostAddress}}/api/v1/auth/trakt/callback?code=example&stat
 
 ###
 
+### After logging in, copy requestToken from the response into @csrfToken above.
+GET {{TraktMyYear.Api_HostAddress}}/api/v1/auth/csrf
+Accept: application/json
+
+###
+
 DELETE {{TraktMyYear.Api_HostAddress}}/api/v1/auth/trakt
+X-CSRF-TOKEN: {{csrfToken}}
 
 ###
 

@@ -140,7 +140,7 @@ public sealed class SimklExportTests
         var source = new FakeSource();
         var service = new SimklExportService(source, new OffsetYearBoundary());
 
-        var files = await service.ExportAsync(2026, MediaType.Movie, YearReviewSort.Title, SortDirection.Asc);
+        var files = await service.ExportAsync("test-account", 2026, MediaType.Movie, YearReviewSort.Title, SortDirection.Asc);
 
         Assert.Equal(DateTimeOffset.Parse("2025-12-31T23:00:00Z", CultureInfo.InvariantCulture), source.Start);
         Assert.Equal(DateTimeOffset.Parse("2026-12-31T23:00:00Z", CultureInfo.InvariantCulture), source.End);
@@ -154,7 +154,7 @@ public sealed class SimklExportTests
         var source = new FakeSource();
         var service = new SimklExportService(source, new OffsetYearBoundary());
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ExportAsync(1899, MediaType.Movie, YearReviewSort.Title, SortDirection.Asc));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.ExportAsync("test-account", 1899, MediaType.Movie, YearReviewSort.Title, SortDirection.Asc));
         Assert.Null(source.Start);
     }
 
@@ -172,7 +172,7 @@ public sealed class SimklExportTests
         public DateTimeOffset? Start { get; private set; }
         public DateTimeOffset? End { get; private set; }
 
-        public Task<IReadOnlyList<YearReviewItem>> GetExportTitlesAsync(MediaType mediaType,
+        public Task<IReadOnlyList<YearReviewItem>> GetExportTitlesAsync(string accountId, MediaType mediaType,
             DateTimeOffset startAt, DateTimeOffset endAt, CancellationToken cancellationToken = default)
         {
             Start = startAt;
