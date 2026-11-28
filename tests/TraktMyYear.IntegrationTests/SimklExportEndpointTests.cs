@@ -253,7 +253,6 @@ public sealed class SimklExportEndpointTests
             builder.Services.PostConfigure<TraktOptions>(options =>
             {
                 options.ClientId = "fake-client-id";
-                options.ClientSecret = string.Empty;
                 options.CallbackUrl = "http://localhost/callback";
                 options.ApiBaseUrl = "https://api.example.test";
                 options.Username = "me";

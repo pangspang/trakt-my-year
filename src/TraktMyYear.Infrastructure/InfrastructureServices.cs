@@ -15,7 +15,6 @@ public sealed class TraktOptions
     public const string SectionName = "Trakt";
 
     public string ClientId { get; set; } = string.Empty;
-    public string ClientSecret { get; set; } = string.Empty;
     public string CallbackUrl { get; set; } = string.Empty;
     public string Timezone { get; set; } = "UTC";
     public string ApiBaseUrl { get; set; } = "https://api.trakt.tv";
@@ -264,7 +263,6 @@ public static class InfrastructureServiceCollectionExtensions
             .Configure(options =>
             {
                 options.ClientId = Environment.GetEnvironmentVariable("TRAKT_CLIENT_ID") ?? string.Empty;
-                options.ClientSecret = Environment.GetEnvironmentVariable("TRAKT_CLIENT_SECRET") ?? string.Empty;
                 options.CallbackUrl = Environment.GetEnvironmentVariable("TRAKT_CALLBACK_URL") ?? string.Empty;
                 options.Timezone = Environment.GetEnvironmentVariable("TRAKT_TIMEZONE") ?? "UTC";
                 options.ApiBaseUrl = Environment.GetEnvironmentVariable("TRAKT_API_BASE_URL") ?? "https://api.trakt.tv";

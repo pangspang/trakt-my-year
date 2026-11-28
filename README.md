@@ -31,14 +31,12 @@ The application automatically loads a `.env` file from the repository root or a 
 
 ```dotenv
 TRAKT_CLIENT_ID=your-trakt-client-id
-TRAKT_CLIENT_SECRET=your-trakt-client-secret
 TRAKT_CALLBACK_URL=http://localhost:5000/api/v1/auth/trakt/callback
 TRAKT_TIMEZONE=UTC
 ```
 
-`TRAKT_CLIENT_ID` and `TRAKT_CALLBACK_URL` are required. `TRAKT_CLIENT_SECRET` is accepted for
-configuration compatibility but the current authorization-code flow uses PKCE and does not send
-the secret. Never commit real credentials, tokens, or account data.
+`TRAKT_CLIENT_ID` and `TRAKT_CALLBACK_URL` are required. The authorization-code flow uses PKCE and
+does not require a client secret. Never commit real credentials, tokens, or account data.
 
 Optional variables:
 
@@ -67,6 +65,47 @@ default browser. If it does not open, visit:
 
 After authorization, open <http://localhost:5000/> for the browser dashboard. OpenAPI JSON is
 available at <http://localhost:5000/openapi/v1.json> in Development.
+
+## Run with Docker
+
+Use Docker with Linux containers. The published image is available on
+[Docker Hub](https://hub.docker.com/r/pangspang/trakt-my-year) for `linux/amd64`:
+
+```powershell
+docker pull pangspang/trakt-my-year:latest
+```
+
+Create the `.env` file described above, then pass it at container startup:
+
+```powershell
+docker run --detach --name trakt-my-year --publish 127.0.0.1:5000:8080 --env-file .env pangspang/trakt-my-year:latest
+```
+
+Alternatively, supply variables individually:
+
+```powershell
+docker run --detach --name trakt-my-year --publish 127.0.0.1:5000:8080 --env TRAKT_CLIENT_ID=your-trakt-client-id --env TRAKT_CALLBACK_URL=http://localhost:5000/api/v1/auth/trakt/callback --env TRAKT_TIMEZONE=UTC pangspang/trakt-my-year:latest
+```
+
+To build from source instead, run `docker build --tag trakt-my-year:local .` from the repository
+root and substitute `trakt-my-year:local` in the run commands.
+
+All configuration variables listed above are supported at runtime; no rebuild is needed to change
+them. Recreate the container with the new values. Docker env files should use plain `KEY=value`
+lines without wrapping values in quotes. The build context includes only application source,
+excluding `.env` files and local build outputs, so credentials are not baked into the image.
+
+The image runs as a non-root user in Production and listens on container port `8080`. The examples
+bind host port `5000` to localhost only. Open
+<http://localhost:5000/api/v1/auth/trakt/login> manually, then visit
+<http://localhost:5000/> after authorization. Production does not open a browser or expose OpenAPI
+JSON. If you change the host port, update `TRAKT_CALLBACK_URL` and the Trakt application's redirect
+URI to match the browser-facing URL, not the internal container port.
+
+View logs with `docker logs trakt-my-year`; stop and remove the container with
+`docker stop trakt-my-year` and `docker rm trakt-my-year`. Tokens and cached data remain in memory
+and are lost on restart. The image does not change the application's single-user/local-use design;
+do not expose it publicly without HTTPS and access protection.
 
 ## API examples
 
@@ -168,3 +207,7 @@ validation with the respective services.
 ## License
 
 This project is available under the [MIT License](LICENSE).
+
+## Trakt notice
+
+Trakt my year uses Trakt but is not endorsed or certified by Trakt
